@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Edit|Write",
+      "hooks": [{ "type": "command", "command": "jq -r '.tool_input.file_path' | xargs npx prettier --write" }]
+    }],
+    "Stop": [{
+      "hooks": [{ "type": "agent", "prompt": "Verify that all unit tests pass. Run the test suite and check the results.", "timeout": 120 }]
+    }]
+  }
+}
