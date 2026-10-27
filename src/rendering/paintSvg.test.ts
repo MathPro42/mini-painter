@@ -5,14 +5,25 @@ import { paintSvg, SELECTION_OUTLINE_COLORS, SELECTION_OUTLINE_PX } from './pain
 
 const style = (value: unknown): string => (typeof value === 'string' ? value : 'gradient');
 
-/** Records each call (and each fill or stroke with the style in effect) as a short string. */
+/**
+ * Records each call (and each fill or stroke with the style in effect) as a
+ * short string, plus each change of composite operation.
+ */
 function recordingContext(): { ctx: SvgCanvasContext; log: string[] } {
   const log: string[] = [];
+  let composite: GlobalCompositeOperation = 'source-over';
   const ctx: SvgCanvasContext = {
     fillStyle: '',
     strokeStyle: '',
     lineWidth: 1,
     lineJoin: 'miter',
+    get globalCompositeOperation() {
+      return composite;
+    },
+    set globalCompositeOperation(operation: GlobalCompositeOperation) {
+      composite = operation;
+      log.push(`composite ${operation}`);
+    },
     setTransform: (...args: unknown[]) => log.push(`transform ${args.join(',')}`),
     clearRect: () => log.push('clear'),
     drawImage: (image: unknown) => log.push(`image ${image === BELOW ? 'below' : 'above'}`),
@@ -95,6 +106,22 @@ describe('paintSvg', () => {
       'fill #2e8b57 evenodd',
       'image above',
     ]);
+  });
+
+  it('blends the artwork above in hard light, and only that artwork', () => {
+    const log = paint({ below: BELOW, above: ABOVE, selectedRegionId: 'region-1' });
+    const order = log
+      .filter((entry) => /^(image|composite|stroke) /.test(entry))
+      .map((entry) => entry.replace(/^stroke .*/, 'stroke'));
+    expect(order).toEqual([
+      'image below',
+      'composite hard-light',
+      'image above',
+      'composite source-over',
+      'stroke',
+      'stroke',
+    ]);
+    expect(paint({ below: BELOW }).some((entry) => entry.startsWith('composite'))).toBe(false);
   });
 
   it('outlines the selected region last, with a constant on-screen width', () => {
