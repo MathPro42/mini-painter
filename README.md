@@ -5,8 +5,9 @@ right in the browser. Nothing is uploaded to a server.
 
 **Live:** https://mathpro42.github.io/mini-painter/
 
-> Status: early scaffold. The app currently renders a placeholder cube to prove the build
-> and deploy pipeline.
+> Status: early. Open an SVG paint-scheme sheet (or any flat-colored SVG), then click or
+> pick its regions and paint them on a view you can zoom into. 3D model upload is not
+> there yet; until a file is opened, the viewport shows a placeholder cube.
 
 ## Quick start
 

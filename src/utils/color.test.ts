@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hexColorToInt, normalizeHexColor, parseHexColor } from './color';
+import { hexColorToInt, normalizeCssColor, normalizeHexColor, parseHexColor } from './color';
 
 describe('normalizeHexColor', () => {
   it.each([
@@ -41,5 +41,36 @@ describe('hexColorToInt', () => {
 
   it('throws a RangeError for invalid input', () => {
     expect(() => hexColorToInt('nope')).toThrow(RangeError);
+  });
+});
+
+describe('normalizeCssColor', () => {
+  it.each([
+    ['#C8553D', '#c8553d'],
+    ['#abc', '#aabbcc'],
+    ['#abcd', '#aabbcc'],
+    ['#c8553d80', '#c8553d'],
+    ['  Teal ', '#008080'],
+    ['grey', '#808080'],
+    ['rgb(200, 85, 61)', '#c8553d'],
+    ['rgb(200 85 61 / 50%)', '#c8553d'],
+    ['rgba(0,0,0,0.5)', '#000000'],
+    ['rgb(100%, 50%, 0%)', '#ff8000'],
+    ['rgb(300, 0, 12.4)', '#ff000c'],
+  ])('normalizes %j to %j', (input, expected) => {
+    expect(normalizeCssColor(input)).toBe(expected);
+  });
+
+  it.each([
+    'none',
+    'currentColor',
+    'url(#gradient)',
+    '#12',
+    '#12345',
+    'rgb(1, 2)',
+    'rgb(., 1, 2)',
+    '',
+  ])('returns null for %j', (input) => {
+    expect(normalizeCssColor(input)).toBeNull();
   });
 });

@@ -73,8 +73,9 @@ are off.
 
 - Build Three.js objects in plain functions (see `rendering/helloCubeScene.ts`). They
   run in Node without WebGL, so test them directly.
-- Keep `rendering/createRenderer.ts` (the WebGL part) thin. It is not unit-tested, so
-  check changes to it in a browser with `npm run build && npm run preview`.
+- Keep `rendering/createRenderer.ts` (the WebGL part) and `rendering/svgModel.ts` (canvas
+  and image loading) thin. They are not unit-tested, so check changes to them in a browser
+  with `npm run build && npm run preview`.
 - In component tests, mock `rendering/createRenderer` (see `Viewport.test.tsx`).
 
 ## Architecture

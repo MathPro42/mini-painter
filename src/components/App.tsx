@@ -1,5 +1,7 @@
 import type { JSX } from 'preact';
 import type { AppState } from '../state/appState';
+import { RegionPanel } from './RegionPanel';
+import { SvgUpload } from './SvgUpload';
 import { Viewport } from './Viewport';
 
 interface AppProps {
@@ -11,8 +13,12 @@ export function App({ state }: AppProps): JSX.Element {
     <main class="app">
       <header class="app__header">
         <h1 class="app__title">Mini Painter</h1>
+        <SvgUpload state={state} />
       </header>
-      <Viewport state={state} />
+      <div class="app__body">
+        <Viewport state={state} />
+        <RegionPanel state={state} />
+      </div>
     </main>
   );
 }
