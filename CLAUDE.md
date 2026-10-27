@@ -18,7 +18,8 @@ The app is fully generic. Never bundle, reference, or name:
 
 Models come from the user at runtime. Sample assets, fixtures and docs use generic shapes
 (cube, sphere) and generic color names ("brick red", `#c8553d`). This applies to code,
-tests, comments, commit messages and docs.
+tests, comments, commit messages and docs. Real-world files for manual testing go in
+`example/`, which is gitignored. Never copy them, their file names or their region names into the repo.
 
 ## Commands
 
@@ -89,6 +90,11 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   pushes changes into the scene. Rendering never calls back into components.
 - Scene construction (`rendering/helloCubeScene.ts`) is separate from the WebGL renderer,
   so scene logic is unit-testable in Node without a GPU.
+- SVG flow: `state.loadSvg()` parses with `utils/svg/parseSvg.ts` (regions, viewBox, artwork).
+  `rendering/svgLayer.ts` follows `svg`, `regionColors` and `selectedRegionId` and repaints
+  the plane's canvas texture (`paintSvg.ts`). Clicks go UI → rendering → state: `Viewport`
+  calls `handle.pickRegion(x, y)`, then `state.selectRegion()`. Rendering never writes state.
+- Components read signals with `components/useSignalValue.ts`, which re-renders on change.
 
 ## Principles
 
@@ -139,6 +145,8 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
 - Component tests mock `rendering/createRenderer` because jsdom has no WebGL.
 - `rendering/createRenderer.ts` itself is not unit-tested (it needs a real WebGL context).
   It is kept thin. Verify changes to it in a browser (`npm run build && npm run preview`).
+  The same goes for `rendering/svgModel.ts` (2D canvas, `Image`, Blob URLs).
+- SVG parser tests use the synthetic sheets in `src/utils/svg/fixtures/`, imported with `?raw`.
 - Preact 11 defers effect cleanup on unmount. Wrap `unmount()` in `act()` from
   `preact/test-utils` when asserting on cleanup.
 
@@ -149,6 +157,15 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-10-27 | SVG regions: each `selectionMap` child group, else each filled top-level element | Sheets mark paint zones with invisible hit groups. Other SVGs still load. Nothing filled → a clear error.   |
+| 2026-10-27 | A region is a whole `selectionMap` group, painted flat under the `Image` layer   | Simplest v1. Sample layer groups hold only swatches, so there are no visible paths to match groups to.      |
+| 2026-10-27 | Limitation: one flat color per region; `Shade`/`Highlight` masks are not tinted  | Shading comes from the `Image` overlay alone. Revisit: per-region shade/highlight tones through the masks.  |
+| 2026-10-27 | Loose shapes beside `selectionMap` groups share one "Ungrouped shapes" region    | In samples they are stray slivers. With no groups at all, each loose shape is its own region.               |
+| 2026-10-27 | SVGs render to a canvas texture; artwork is drawn by the browser as an image     | No SVG renderer of our own. Images never run scripts or fetch resources, so untrusted files stay inert.     |
+| 2026-10-27 | Own small XML parser (`utils/xml.ts`) instead of `DOMParser`                     | `DOMParser` is missing in Node tests, and source offsets let artwork be copied verbatim. No new dependency. |
+| 2026-10-27 | Drawings zoom (toward the pointer) and pan, but never rotate                     | Owner's call after trying a 2.5D relief. A flat drawing seen at an angle only distorts it.                  |
+| 2026-10-27 | OrbitControls on the shared camera; a click (≤5 px of travel) picks a region     | One rig for the cube and drawings. The threshold keeps a drag from changing the selection.                  |
+| 2026-10-27 | Components read signals via `useSignalValue`, not `preact/compat`                | compat's `useSyncExternalStore` also installs global React-style vnode hooks. A 10-line hook is enough.     |
 | 2026-10-27 | Three.js gets its own chunk; `chunkSizeWarningLimit` raised to 600 kB            | Three.js alone is ~530 kB minified. A separate chunk keeps its cache warm across app deploys.               |
 | 2026-10-27 | Pages deploy uses `upload-pages-artifact` + `deploy-pages`, no `configure-pages` | Vite sets `base` itself, so configure-pages adds nothing. Fewer moving parts.                               |
 | 2026-10-27 | `deploy.yml` reuses `ci.yml` via `workflow_call`                                 | One definition of "green". Deploy can't skip lint or tests.                                                 |

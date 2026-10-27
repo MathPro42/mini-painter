@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generic drawing with no selection map: each filled top-level element is a region. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80">
+  <style>
+    .warm { fill: #c8553d; }
+  </style>
+  <rect id="backdrop" width="120" height="80" fill="#f0ead6" />
+  <circle class="warm" cx="30" cy="40" r="20" />
+  <g id="pair" fill="#3d7ac8" transform="translate(60 20)">
+    <rect width="20" height="20" />
+    <ellipse cx="40" cy="30" rx="10" ry="6" style="fill: rgb(46, 139, 87)" />
+  </g>
+  <g id="outline" fill="none" stroke="#222222">
+    <rect x="2" y="2" width="116" height="76" />
+  </g>
+  <text x="5" y="10">label</text>
+</svg>

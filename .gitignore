@@ -1,3 +1,7 @@
+# Local sample files for manual testing. Real-world sheets may carry third-party names,
+# so they must never be committed (see the content rule in CLAUDE.md).
+/example/
+
 # Logs
 logs
 *.log

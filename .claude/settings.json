@@ -15,9 +15,8 @@
       {
         "hooks": [
           {
-            "type": "agent",
-            "prompt": "Verify that all unit tests pass. Run the test suite and check the results.",
-            "timeout": 120
+            "type": "command",
+            "command": "npm test --silent >&2 || exit 2"
           }
         ]
       }
