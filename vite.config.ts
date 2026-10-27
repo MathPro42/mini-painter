@@ -6,7 +6,7 @@ export default defineConfig({
   base: '/mini-painter/',
   plugins: [preact()],
   build: {
-    // Three.js on its own is ~540 kB minified (~135 kB gzip). It goes in its own
+    // Three.js on its own is ~530 kB minified (~135 kB gzip). It goes in its own
     // chunk so app changes don't bust its cache, and the limit is raised to fit it.
     chunkSizeWarningLimit: 600,
     rolldownOptions: {
