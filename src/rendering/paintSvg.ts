@@ -18,6 +18,7 @@ export type SvgCanvasContext = Pick<
   | 'strokeStyle'
   | 'lineWidth'
   | 'lineJoin'
+  | 'globalCompositeOperation'
 >;
 
 export interface SvgPaintInput {
@@ -37,7 +38,8 @@ export const SELECTION_OUTLINE_COLORS = { outer: '#16181d', inner: '#ffffff' } a
 /**
  * Paints a drawing onto a `width` × `height` canvas: artwork below, each
  * region in its assigned color or original fill (unpainted regions stay
- * clear), artwork above, then an outline around the selected region.
+ * clear), artwork above blended in as shading, then an outline around the
+ * selected region.
  */
 export function paintSvg(
   ctx: SvgCanvasContext,
@@ -64,7 +66,11 @@ export function paintSvg(
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (above !== null) {
+    // Hard light: the artwork's greys darken (multiply) or lighten (screen) the paint
+    // instead of covering it with grey. Opaque black and white still draw as-is.
+    ctx.globalCompositeOperation = 'hard-light';
     ctx.drawImage(above, 0, 0, width, height);
+    ctx.globalCompositeOperation = 'source-over';
   }
   const selected = svg.regions.find((region) => region.id === selectedRegionId);
   if (selected !== undefined) {

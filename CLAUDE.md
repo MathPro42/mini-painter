@@ -157,6 +157,8 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-10-27 | `Image` artwork composites with `hard-light`; `overlay` failed a browser check   | Greys multiply or screen paint by their value, so opaque black/white stay exact. Overlay keys off paint.    |
+| 2026-10-27 | Masked `Layer`/`Shade`/`Highlight` groups are legend swatches, not model shading | In every sample each holds one small square. Per-region tones would paint through the mask images instead.  |
 | 2026-10-27 | SVG regions: each `selectionMap` child group, else each filled top-level element | Sheets mark paint zones with invisible hit groups. Other SVGs still load. Nothing filled → a clear error.   |
 | 2026-10-27 | A region is a whole `selectionMap` group, painted flat under the `Image` layer   | Simplest v1. Sample layer groups hold only swatches, so there are no visible paths to match groups to.      |
 | 2026-10-27 | Limitation: one flat color per region; `Shade`/`Highlight` masks are not tinted  | Shading comes from the `Image` overlay alone. Revisit: per-region shade/highlight tones through the masks.  |
