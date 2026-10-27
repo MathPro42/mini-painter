@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Guidance for Claude (and humans) working in this repository. Read this before changing code.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Humans read it too: it is the home of the architecture rules and the decision log.
 
 ## Project
 
@@ -22,15 +23,23 @@ tests, comments, commit messages and docs.
 ## Commands
 
 ```bash
-npm ci                 # install exactly what package-lock.json pins
+npm ci                 # install exactly what package-lock.json pins (Node 22, see .nvmrc)
 npm run dev            # dev server → http://localhost:5173/mini-painter/
 npm run check          # everything CI runs: lint, format, typecheck, tests+coverage, build
+npm test               # all tests once, no coverage
 npm run test:watch     # Vitest in watch mode
 npm run lint:fix       # ESLint autofix
 npm run format         # Prettier write
+npm run build && npm run preview   # production build → http://localhost:4173/mini-painter/
+
+npx vitest run src/utils/color.test.ts   # one test file
+npx vitest run -t "hexColorToInt"        # tests whose full name matches a regex
+npx vitest run --project unit            # Node tests only (--project dom: component tests)
 ```
 
 Run `npm run check` before every commit. CI runs the same steps and must be green before merge.
+`ci.yml` runs on pull requests and non-`main` pushes. A push to `main` runs `deploy.yml`,
+which calls `ci.yml` and then publishes `dist/` to GitHub Pages.
 
 ## Architecture
 
@@ -68,9 +77,12 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
 
 - `state/appState.ts` exports `createAppState()`, a factory that returns signals plus setters.
   `main.tsx` creates the single instance and passes it down as a prop. Tests create
-  their own instance, so no state leaks between tests.
+  their own instance, so no state leaks between tests. Setters validate input with a
+  `parseX()` from `utils/`, so an invalid value throws before it reaches a signal.
 - `components/Viewport.tsx` is the **only** bridge between UI and rendering. It owns the
   `<canvas>`, calls `createRenderer(canvas, state)` on mount and `dispose()` on unmount.
+  `createRenderer` throws when WebGL is unavailable. `Viewport` catches that and shows a
+  `role="alert"` message in place of the canvas.
 - `rendering/createRenderer.ts` subscribes to state with `effect()` from signals-core and
   pushes changes into the scene. Rendering never calls back into components.
 - Scene construction (`rendering/helloCubeScene.ts`) is separate from the WebGL renderer,
@@ -85,8 +97,8 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
    (Node) or `*.test.tsx` (jsdom). `utils/` and `state/` keep ≥90% coverage (enforced).
 3. **Rendering stays separate from UI and state.** Three.js code lives in `rendering/`
    only; Preact only in `components/`.
-4. **No god files.** ESLint caps files at 300 lines and functions at 60. Split by
-   responsibility before you hit them.
+4. **No god files.** ESLint caps files at 300 lines, functions at 60 (test files exempt)
+   and cyclomatic complexity at 10. Split by responsibility before you hit them.
 5. **Green before merge.** Lint, format, typecheck, tests and build must pass in CI.
 6. **Strict TypeScript.** No `any`, no non-null assertions, no `@ts-ignore`. Use named
    exports only (no `export default` in `src/`).
@@ -101,10 +113,27 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
 - Invalid input to a parser: `normalizeX()` returns `null`, `parseX()` throws `RangeError`.
 - Comments explain _why_, not _what_.
 
+### Easy-to-miss rules that fail `npm run check`
+
+- Exported functions need explicit return types. Type-only imports use `import type`.
+- `console.log` is a lint error (`console.warn` and `console.error` are allowed). Lint runs
+  with `--max-warnings 0`, and an unused `eslint-disable` comment is itself an error.
+- `tsconfig.app.json` adds `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` and
+  `noPropertyAccessFromIndexSignature` on top of `strict`. Indexing returns `T | undefined`,
+  an optional property can't be set to `undefined` explicitly, and index-signature keys need
+  bracket access.
+- Prettier also checks Markdown (100 columns), so run `npm run format` after you edit a
+  table in this file.
+- Vite 8 bundles with Rolldown. Chunking is configured under `build.rolldownOptions`
+  (`codeSplitting.groups`), not with Rollup's `manualChunks`.
+
 ## Testing notes
 
 - Vitest has two projects (`vitest.config.ts`): **unit** (`*.test.ts`, Node) and **dom**
   (`*.test.tsx`, jsdom with Testing Library).
+- Vitest globals are off: import `describe`, `it`, `expect` and `vi` from `vitest`. That is
+  also why `src/test/setup.ts` (dom project only) registers Testing Library's `cleanup()`
+  itself.
 - Component tests mock `rendering/createRenderer` because jsdom has no WebGL.
 - `rendering/createRenderer.ts` itself is not unit-tested (it needs a real WebGL context).
   It is kept thin. Verify changes to it in a browser (`npm run build && npm run preview`).
