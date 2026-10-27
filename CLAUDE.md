@@ -39,7 +39,9 @@ npx vitest run --project unit            # Node tests only (--project dom: compo
 
 Run `npm run check` before every commit. CI runs the same steps and must be green before merge.
 `ci.yml` runs on pull requests and non-`main` pushes. A push to `main` runs `deploy.yml`,
-which calls `ci.yml` and then publishes `dist/` to GitHub Pages.
+which calls `ci.yml` and then publishes `dist/` to GitHub Pages. The repo's Settings → Pages →
+Source must stay on **GitHub Actions**. With "Deploy from a branch", GitHub also runs its own
+Jekyll deploy on every push, and if it finishes last it publishes the raw repo (a blank page).
 
 ## Architecture
 
