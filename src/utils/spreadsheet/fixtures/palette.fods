@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2" office:version="1.2" office:mimetype="application/vnd.oasis.opendocument.spreadsheet">
+ <office:body>
+  <office:spreadsheet>
+   <table:table table:name="Colors">
+    <table:table-row><table:table-cell office:value-type="string"><text:p>Sample palette</text:p></table:table-cell></table:table-row>
+    <table:table-row><table:table-cell/></table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Name</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Hex code</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Category</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Note</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>brick red</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>#c8553d</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>base</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="1"><text:p>1</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>sea green</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>2E8B57</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>base</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="2.5"><text:p>2.5</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>mustard</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>rgb(224, 177, 60)</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>layer</text:p></table:table-cell>
+     <table:table-cell office:value-type="boolean" office:boolean-value="true"><text:p>TRUE</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>slate blue</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>#3d5a80</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>layer</text:p></table:table-cell>
+     <table:table-cell table:formula="of:=1/4" office:value-type="float" office:value="0.25"><text:p>0.25</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>no color here</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>tbd</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row><table:table-cell/></table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>grüne Wiese</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>#6a994e</text:p></table:table-cell>
+    </table:table-row>
+    <table:table-row>
+     <table:table-cell office:value-type="string"><text:p>Ωmega teal</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>#2a9d8f</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>wash</text:p></table:table-cell>
+    </table:table-row>
+   </table:table>
+   <table:table table:name="Notes">
+    <table:table-row><table:table-cell office:value-type="string"><text:p>Value</text:p></table:table-cell></table:table-row>
+    <table:table-row><table:table-cell office:value-type="string"><text:p>#000000</text:p></table:table-cell></table:table-row>
+   </table:table>
+  </office:spreadsheet>
+ </office:body>
+</office:document>

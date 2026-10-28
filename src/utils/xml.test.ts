@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeEntities, escapeXmlAttribute, MAX_XML_DEPTH, parseXml } from './xml';
+import { decodeEntities, escapeXmlAttribute, escapeXmlText, MAX_XML_DEPTH, parseXml } from './xml';
 
 describe('parseXml', () => {
   it('builds the element tree with attributes', () => {
@@ -85,6 +85,17 @@ describe('decodeEntities', () => {
 
   it('leaves unknown and out-of-range references alone', () => {
     expect(decodeEntities('&nbsp; &#1114112; &quot;&apos;&gt;')).toBe(`&nbsp; &#1114112; "'>`);
+  });
+});
+
+describe('escapeXmlText', () => {
+  it('escapes markup characters, including the ">" of a CDATA end', () => {
+    expect(escapeXmlText('a&b<c>]]>"d')).toBe('a&amp;b&lt;c&gt;]]&gt;"d');
+  });
+
+  it('round-trips through the parser', () => {
+    const text = 'brick & "mortar" <red>';
+    expect(parseXml(`<t>${escapeXmlText(text)}</t>`).text).toBe(text);
   });
 });
 

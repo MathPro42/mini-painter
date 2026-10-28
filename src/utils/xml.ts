@@ -92,6 +92,11 @@ export function decodeEntities(text: string): string {
   );
 }
 
+/** Escapes a string for use as XML element text. */
+export function escapeXmlText(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
 /** Escapes a string for use inside a double-quoted XML attribute. */
 export function escapeXmlAttribute(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
