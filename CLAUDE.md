@@ -90,15 +90,19 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   pushes changes into the scene. Rendering never calls back into components.
 - Scene construction (`rendering/helloCubeScene.ts`) is separate from the WebGL renderer,
   so scene logic is unit-testable in Node without a GPU.
-- SVG flow: `state.loadSvg()` parses with `utils/svg/parseSvg.ts` (regions, viewBox, artwork).
-  `rendering/svgLayer.ts` follows `svg`, `regionColors` and `selectedRegionId` and repaints
-  the plane's canvas texture (`paintSvg.ts`). Clicks go UI → rendering → state: `Viewport`
+- SVG flow: `state.loadSvg()` parses with `utils/svg/parseSvg.ts` (regions, viewBox, artwork,
+  and for paint-scheme sheets the tone masks and metal picture from `utils/svg/toneMasks.ts`).
+  `rendering/svgLayer.ts` follows `svg`, `regionPaints` and `selectedRegionId` and repaints
+  the plane's canvas texture: `paintSvg.ts` draws the base coats, then `paintTones.ts` the
+  metal and the Layer/Shade/Highlight tones on a scratch canvas, then the shading artwork. Clicks go UI → rendering → state: `Viewport`
   calls `handle.pickRegion(x, y)`, then `state.selectRegion()`. Rendering never writes state.
 - Components read signals with `components/useSignalValue.ts`, which re-renders on change.
-- `AppState` is composed from `state/paintState.ts` (drawing, region colors, undo history)
-  and `state/paletteState.ts` (named palettes, one in use). Undo covers region colors only. Every
-  `setRegionColor` is one step; `previewRegionColor` shows a color without a step (the color
-  picker previews on `input` and commits on `change`). `loadSvg` clears the history.
+- `AppState` is composed from `state/paintState.ts` (drawing, per-region paints for the four
+  steps in `utils/paint/regionPaint.ts`, the active step, undo history) and
+  `state/paletteState.ts` (named palettes, one in use). Undo covers region paints only. Every
+  `setRegionStep` or `randomizeRegions` is one step; `previewRegionStep` shows a paint without
+  a step (the color picker previews on `input` and commits on `change`). `loadSvg` clears the
+  history and goes back to the Base step.
 - Palette files: `utils/palette/paletteFile.ts` turns the first sheet into colors (header
   detection, `rgb()`/hex parsing) and writes exports. `utils/spreadsheet/readSpreadsheet.ts`
   picks the reader by content, not extension: zip → `.xlsx`, compound file → `.xls` (BIFF8),
@@ -171,6 +175,11 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-10-28 | Four paint steps per region; Layer/Shade/Highlight show through the sheet masks  | How models are painted. Supersedes the 2026-10-27 "legend swatches" and "one flat color per region" rows.   |
+| 2026-10-28 | Tone masks are browser-rendered images: the masked group refilled with white     | Full SVG mask behavior (units, transforms, embedded images) with no pixel reads of 2048 px textures.        |
+| 2026-10-28 | Metallic Base: the sheet's hidden `Met` picture, tinted with hard light          | Sheets ship a bare-metal picture behind an empty mask for this. It replaces the flat coat; tones go on top. |
+| 2026-10-28 | A paint is metallic when its palette group mentions "metal"                      | Sample palettes mark metals in their Type column. Colors from the picker are never metallic.                |
+| 2026-10-28 | Randomize: a random Base per region (washes skipped), other steps cleared        | Fast scheme ideas. Random tones on top would clash; one undo brings the previous scheme back.               |
 | 2026-10-28 | Own readers for `.xlsx`, `.xls` (BIFF8) and CSV; no spreadsheet library          | Real palette sheets are often legacy `.xls`, even named `.xlsx`. npm's SheetJS build is stale and flagged.  |
 | 2026-10-28 | `.xlsx` inflates with the browser's `DecompressionStream`, capped at 16 MB/part  | No zip dependency. Output is counted while streaming, so a lying size field can't zip-bomb the tab.         |
 | 2026-10-28 | Each imported file becomes its own palette; a list picks the one in use          | Painters own several paint ranges and switch between them. An import never changes existing palettes.       |

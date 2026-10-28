@@ -104,15 +104,44 @@ describe('PalettePanel', () => {
   it('paints the selected region with a clicked color, as one undoable step', async () => {
     const state = renderPanel();
     expect(paintButton('sea green')).toBeDisabled();
-    expect(screen.getByText('Select a region, then pick a color for it.')).toBeInTheDocument();
+    expect(screen.getByText('Select a region, then pick a paint for it.')).toBeInTheDocument();
 
     await act(() => {
       state.selectRegion('region-1');
     });
-    expect(screen.getByText('Pick a color for right.')).toBeInTheDocument();
+    expect(screen.getByText('Pick a Base paint for right.')).toBeInTheDocument();
     fireEvent.click(paintButton('sea green'));
-    expect(state.regionColors.value.get('region-1')).toBe('#2e8b57');
+    expect(state.regionPaints.value.get('region-1')?.base).toEqual({
+      color: '#2e8b57',
+      name: 'sea green',
+    });
     expect(state.canUndo.value).toBe(true);
+  });
+
+  it('paints the active step, and flags metallic paints', async () => {
+    const state = createAppState();
+    state.addPalette('metals', [{ name: 'steel', color: '#8a8a8a', group: 'Metallic' }]);
+    state.loadSvg(DRAWING);
+    render(<PalettePanel state={state} />);
+    await act(() => {
+      state.selectRegion('region-0');
+      state.setActiveStep('highlight');
+    });
+    expect(screen.getByText('Pick a Highlight paint for left.')).toBeInTheDocument();
+    fireEvent.click(paintButton('steel'));
+    expect(state.regionPaints.value.get('region-0')).toEqual({
+      highlight: { color: '#8a8a8a', name: 'steel', metallic: true },
+    });
+    expect(paintButton('steel')).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('marks a paint as current only when its name matches too', async () => {
+    const state = renderPanel();
+    await act(() => {
+      state.selectRegion('region-0');
+      state.setRegionStep('region-0', 'base', { color: '#2e8b57', name: 'other green' });
+    });
+    expect(paintButton('sea green')).toHaveAttribute('aria-current', 'false');
   });
 
   it('marks the color the selected region already has', async () => {

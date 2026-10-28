@@ -1,43 +1,63 @@
 import { batch, computed, signal } from '@preact/signals-core';
-import type { ReadonlySignal } from '@preact/signals-core';
-import { parseHexColor } from '../utils/color';
+import type { ReadonlySignal, Signal } from '@preact/signals-core';
 import { createHistory, pushHistory, redoHistory, undoHistory } from '../utils/history';
 import type { History } from '../utils/history';
+import {
+  PAINT_STEPS,
+  parseStepPaint,
+  randomBasePaints,
+  sameRegionPaints,
+  withStep,
+} from '../utils/paint/regionPaint';
+import type { PaintStep, RegionPaint, StepPaint } from '../utils/paint/regionPaint';
+import type { PaletteColor } from '../utils/palette/paletteColor';
 import { parseSvg } from '../utils/svg/parseSvg';
 import type { ParsedSvg } from '../utils/svg/types';
 
-type RegionColors = ReadonlyMap<string, string>;
+type RegionPaints = ReadonlyMap<string, RegionPaint>;
 
-/** The uploaded drawing, the colors painted on it, and their undo history. */
+/** The uploaded drawing, the paints on it, and their undo history. */
 export interface PaintState {
   /** The uploaded SVG split into paintable regions, or `null` before any upload. */
   readonly svg: ReadonlySignal<ParsedSvg | null>;
   /**
-   * Colors the user assigned, as lowercase `#rrggbb` keyed by region id.
-   * Regions without an entry keep their original fill.
+   * Paints the user applied, keyed by region id. A region without a Base
+   * keeps its original fill.
    */
-  readonly regionColors: ReadonlySignal<RegionColors>;
+  readonly regionPaints: ReadonlySignal<RegionPaints>;
   /** Id of the region being painted, or `null`. */
   readonly selectedRegionId: ReadonlySignal<string | null>;
+  /** The step palette picks and the color picker apply to. */
+  readonly activeStep: ReadonlySignal<PaintStep>;
   /**
-   * Parses SVG markup and makes it the current drawing, clearing colors,
-   * selection and undo history. Throws a RangeError (and keeps the current
-   * drawing) when the markup is invalid or has nothing paintable.
+   * Parses SVG markup and makes it the current drawing, clearing paints,
+   * selection and undo history, and going back to the Base step. Throws a
+   * RangeError (and keeps the current drawing) when the markup is invalid or
+   * has nothing paintable.
    */
   loadSvg: (source: string) => void;
   /** Selects a region, or clears the selection with `null`. Throws a RangeError for unknown ids. */
   selectRegion: (id: string | null) => void;
+  /** Chooses the step to paint. Not an undo step. Throws a RangeError for unknown steps. */
+  setActiveStep: (step: PaintStep) => void;
   /**
-   * Paints a region as one undoable step. Throws a RangeError for unknown ids
-   * or invalid colors. Painting a region the color it already has is not a step.
+   * Sets one step of a region's paint, or clears it with `null`, as one undo
+   * step. Setting what is already there is not a step. Throws a RangeError
+   * for unknown ids or invalid colors.
    */
-  setRegionColor: (id: string, color: string) => void;
+  setRegionStep: (id: string, step: PaintStep, paint: StepPaint | null) => void;
   /**
-   * Shows a color on a region without recording an undo step, for live
-   * feedback while the user is still choosing. The next setRegionColor
-   * records the change; undo discards it. Throws like setRegionColor.
+   * Shows a paint without recording an undo step, for live feedback while
+   * the user is still choosing. The next setRegionStep records the change;
+   * undo discards it. Throws like setRegionStep.
    */
-  previewRegionColor: (id: string, color: string) => void;
+  previewRegionStep: (id: string, step: PaintStep, paint: StepPaint) => void;
+  /**
+   * Gives every region a random Base from `colors` and clears its other
+   * steps, as one undo step. Does nothing without a drawing or colors.
+   * `random` defaults to Math.random.
+   */
+  randomizeRegions: (colors: readonly PaletteColor[], random?: () => number) => void;
   readonly canUndo: ReadonlySignal<boolean>;
   readonly canRedo: ReadonlySignal<boolean>;
   /** Reverts the last painting step. Does nothing when there is none. */
@@ -49,10 +69,9 @@ export interface PaintState {
 /** Creates the drawing and painting part of the app state. */
 export function createPaintState(): PaintState {
   const svg = signal<ParsedSvg | null>(null);
-  const regionColors = signal<RegionColors>(new Map());
   const selectedRegionId = signal<string | null>(null);
-  // `present` is the last committed colors; regionColors may run ahead of it during a preview.
-  const history = signal<History<RegionColors>>(createHistory(regionColors.peek()));
+  const activeStep = signal<PaintStep>('base');
+  const paints = createPaintHistory();
 
   const requireRegion = (id: string): string => {
     if (svg.peek()?.regions.some((region) => region.id === id) !== true) {
@@ -60,49 +79,97 @@ export function createPaintState(): PaintState {
     }
     return id;
   };
-
-  const withColor = (id: string, color: string): RegionColors =>
-    new Map(regionColors.peek()).set(requireRegion(id), parseHexColor(color));
-
-  const travel = (step: (current: History<RegionColors>) => History<RegionColors>): void => {
-    const next = step(history.peek());
-    batch(() => {
-      history.value = next;
-      regionColors.value = next.present;
-    });
-  };
+  const withRegionStep = (id: string, step: PaintStep, paint: StepPaint | null): RegionPaints =>
+    withRegionPaint(paints.regionPaints.peek(), requireRegion(id), step, paint);
 
   return {
     svg,
-    regionColors,
+    regionPaints: paints.regionPaints,
     selectedRegionId,
+    activeStep,
     loadSvg: (source) => {
       const parsed = parseSvg(source);
-      const colors: RegionColors = new Map();
-      // One update, so subscribers never see the new drawing with old colors.
+      // One update, so subscribers never see the new drawing with old paints.
       batch(() => {
         svg.value = parsed;
-        regionColors.value = colors;
+        paints.reset();
         selectedRegionId.value = null;
-        history.value = createHistory(colors);
+        activeStep.value = 'base';
       });
     },
     selectRegion: (id) => {
       selectedRegionId.value = id === null ? null : requireRegion(id);
     },
-    setRegionColor: (id, color) => {
-      const next = withColor(id, color);
-      const current = history.peek();
-      batch(() => {
-        if (!sameColors(next, current.present)) {
-          history.value = pushHistory(current, next);
-        }
-        regionColors.value = next;
-      });
+    setActiveStep: (step) => {
+      if (!PAINT_STEPS.includes(step)) {
+        throw new RangeError(`Not a paint step: "${step}"`);
+      }
+      activeStep.value = step;
     },
-    previewRegionColor: (id, color) => {
-      regionColors.value = withColor(id, color);
+    setRegionStep: (id, step, paint) => {
+      paints.commit(withRegionStep(id, step, paint));
     },
+    previewRegionStep: (id, step, paint) => {
+      paints.preview(withRegionStep(id, step, paint));
+    },
+    randomizeRegions: (colors, random = Math.random) => {
+      const ids = svg.peek()?.regions.map((region) => region.id) ?? [];
+      const picks = randomBasePaints(ids, colors, random);
+      if (picks.size > 0) {
+        paints.commit(new Map(Array.from(picks, ([id, base]) => [id, { base }])));
+      }
+    },
+    canUndo: paints.canUndo,
+    canRedo: paints.canRedo,
+    undo: paints.undo,
+    redo: paints.redo,
+  };
+}
+
+/** A copy of `paints` with one step of one region changed; a region left empty is dropped. */
+function withRegionPaint(
+  paints: RegionPaints,
+  id: string,
+  step: PaintStep,
+  paint: StepPaint | null,
+): RegionPaints {
+  const region = withStep(paints.get(id), step, paint && parseStepPaint(paint));
+  const next = new Map(paints);
+  if (Object.keys(region).length === 0) {
+    next.delete(id);
+  } else {
+    next.set(id, region);
+  }
+  return next;
+}
+
+interface PaintHistory {
+  readonly regionPaints: Signal<RegionPaints>;
+  readonly canUndo: ReadonlySignal<boolean>;
+  readonly canRedo: ReadonlySignal<boolean>;
+  readonly undo: () => void;
+  readonly redo: () => void;
+  /** Shows `next` and records it as one undo step, unless nothing changed. */
+  readonly commit: (next: RegionPaints) => void;
+  /** Shows `next` without recording it. */
+  readonly preview: (next: RegionPaints) => void;
+  /** Starts over with no paints and nothing to undo. */
+  readonly reset: () => void;
+}
+
+function createPaintHistory(): PaintHistory {
+  const regionPaints = signal<RegionPaints>(new Map());
+  // `present` is the last committed paints; regionPaints may run ahead of it during a preview.
+  const history = signal<History<RegionPaints>>(createHistory(regionPaints.peek()));
+  const travel = (step: (current: History<RegionPaints>) => History<RegionPaints>): void => {
+    const next = step(history.peek());
+    batch(() => {
+      history.value = next;
+      regionPaints.value = next.present;
+    });
+  };
+  return {
+    regionPaints,
     canUndo: computed(() => history.value.past.length > 0),
     canRedo: computed(() => history.value.future.length > 0),
     undo: () => {
@@ -111,9 +178,24 @@ export function createPaintState(): PaintState {
     redo: () => {
       travel(redoHistory);
     },
+    commit: (next) => {
+      const current = history.peek();
+      batch(() => {
+        if (!sameRegionPaints(next, current.present)) {
+          history.value = pushHistory(current, next);
+        }
+        regionPaints.value = next;
+      });
+    },
+    preview: (next) => {
+      regionPaints.value = next;
+    },
+    reset: () => {
+      const empty: RegionPaints = new Map();
+      batch(() => {
+        history.value = createHistory(empty);
+        regionPaints.value = empty;
+      });
+    },
   };
-}
-
-function sameColors(a: RegionColors, b: RegionColors): boolean {
-  return a.size === b.size && [...a].every(([id, color]) => b.get(id) === color);
 }

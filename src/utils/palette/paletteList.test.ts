@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_PALETTE_COLORS } from './paletteColor';
 import type { PaletteColor } from './paletteColor';
-import {
-  appendPaletteColors,
-  filterPalette,
-  groupPalette,
-  paletteNamesByColor,
-} from './paletteList';
+import { appendPaletteColors, filterPalette, groupPalette } from './paletteList';
 
 const BRICK: PaletteColor = { name: 'brick red', color: '#c8553d', group: 'base' };
 const MEADOW: PaletteColor = { name: 'grüne Wiese', color: '#6a994e' };
@@ -62,14 +57,5 @@ describe('groupPalette', () => {
 
   it('returns no groups for no colors', () => {
     expect(groupPalette([])).toEqual([]);
-  });
-});
-
-describe('paletteNamesByColor', () => {
-  it('names each color value after its first palette color', () => {
-    expect([...paletteNamesByColor([BRICK, MEADOW, CLAY])]).toEqual([
-      ['#c8553d', 'brick red'],
-      ['#6a994e', 'grüne Wiese'],
-    ]);
   });
 });

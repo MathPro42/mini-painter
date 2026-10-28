@@ -20,7 +20,7 @@ const redoButton = (): HTMLElement => screen.getByRole('button', { name: 'Redo' 
 
 const paint = async (state: AppState, color: string): Promise<void> => {
   await act(() => {
-    state.setRegionColor('region-0', color);
+    state.setRegionStep('region-0', 'base', { color: color });
   });
 };
 
@@ -40,11 +40,11 @@ describe('HistoryControls', () => {
     await paint(state, '#c8553d');
 
     fireEvent.click(undoButton());
-    expect(state.regionColors.value.size).toBe(0);
+    expect(state.regionPaints.value.size).toBe(0);
     expect(redoButton()).toBeEnabled();
 
     fireEvent.click(redoButton());
-    expect(state.regionColors.value.get('region-0')).toBe('#c8553d');
+    expect(state.regionPaints.value.get('region-0')?.base?.color).toBe('#c8553d');
   });
 
   it('answers Ctrl+Z, Cmd+Z, Ctrl+Shift+Z and Ctrl+Y anywhere on the page', async () => {
@@ -53,13 +53,13 @@ describe('HistoryControls', () => {
     await paint(state, '#2e8b57');
 
     fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
-    expect(state.regionColors.value.get('region-0')).toBe('#c8553d');
+    expect(state.regionPaints.value.get('region-0')?.base?.color).toBe('#c8553d');
     fireEvent.keyDown(document.body, { key: 'z', metaKey: true });
-    expect(state.regionColors.value.size).toBe(0);
+    expect(state.regionPaints.value.size).toBe(0);
     fireEvent.keyDown(document.body, { key: 'Z', ctrlKey: true, shiftKey: true });
-    expect(state.regionColors.value.get('region-0')).toBe('#c8553d');
+    expect(state.regionPaints.value.get('region-0')?.base?.color).toBe('#c8553d');
     fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
-    expect(state.regionColors.value.get('region-0')).toBe('#2e8b57');
+    expect(state.regionPaints.value.get('region-0')?.base?.color).toBe('#2e8b57');
   });
 
   it('prevents the browser default only for its own shortcuts', async () => {

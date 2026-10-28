@@ -1,25 +1,35 @@
 import { CanvasTexture, SRGBColorSpace } from 'three';
+import type { RegionPaint } from '../utils/paint/regionPaint';
 import { artworkMarkup } from '../utils/svg/layers';
 import type { ArtworkFragment, ParsedSvg } from '../utils/svg/types';
 import { paintSvg } from './paintSvg';
 import type { SvgPaintInput } from './paintSvg';
+import { NO_TONE_MASK_IMAGES } from './paintTones';
 import { createSvgPlane, textureSize } from './svgPlane';
 import type { SvgPlane } from './svgPlane';
 
 export interface SvgModel {
   readonly plane: SvgPlane;
-  /** Repaints the texture with these colors and this selection. */
-  paint: (colors: ReadonlyMap<string, string>, selectedRegionId: string | null) => void;
-  /** Frees the texture, canvas and plane. Artwork that finishes loading later is ignored. */
+  /** Repaints the texture with these paints and this selection. */
+  paint: (paints: ReadonlyMap<string, RegionPaint>, selectedRegionId: string | null) => void;
+  /** Frees the texture, canvases and plane. Images that finish loading later are ignored. */
   dispose: () => void;
 }
 
-type Artwork = Pick<SvgPaintInput, 'below' | 'above'>;
+/** Everything the browser renders from the drawing's own markup. */
+type Images = Pick<SvgPaintInput, 'below' | 'above' | 'toneMasks' | 'metal'>;
+
+const NO_IMAGES: Images = {
+  below: null,
+  above: null,
+  toneMasks: NO_TONE_MASK_IMAGES,
+  metal: null,
+};
 
 /**
  * Builds the textured plane for a drawing. The texture is a 2D canvas that
- * paintSvg redraws on every change; the drawing's artwork is rendered by the
- * browser from SVG markup into images drawn below and above the regions.
+ * paintSvg redraws on every change; the drawing's artwork, tone masks and
+ * metal picture are rendered by the browser from SVG markup into images.
  *
  * Browser-only (canvas, Image, Blob URLs), like createRenderer: check changes
  * in a browser. The logic it wires together (paintSvg, svgPlane) is tested.
@@ -30,22 +40,21 @@ export function createSvgModel(svg: ParsedSvg): SvgModel {
   const plane = createSvgPlane(svg, painter.texture);
   let disposed = false;
 
-  const artwork = loadArtwork(svg, width, height);
-  void artwork.images.then(([below, above]) => {
-    if (disposed) {
-      return;
+  const images = loadImages(svg, width, height);
+  void images.loaded.then((loaded) => {
+    if (!disposed) {
+      painter.showImages(loaded);
     }
-    painter.showArtwork({ below, above });
   });
 
   return {
     plane,
-    paint: (colors, selectedRegionId) => {
-      painter.update({ colors, selectedRegionId });
+    paint: (paints, selectedRegionId) => {
+      painter.update({ paints, selectedRegionId });
     },
     dispose: () => {
       disposed = true;
-      artwork.release();
+      images.release();
       plane.dispose();
       painter.dispose();
     },
@@ -57,50 +66,44 @@ interface Painter {
   /** Changes what is painted and repaints the texture. */
   update: (changes: Partial<SvgPaintInput>) => void;
   /**
-   * Paints with the artwork and returns it, or returns no artwork if drawing
-   * it tainted the canvas: WebGL refuses a tainted canvas as a texture.
+   * Paints with the images, or without any if drawing them tainted the
+   * canvas: WebGL refuses a tainted canvas as a texture.
    */
-  showArtwork: (artwork: Artwork) => Artwork;
+  showImages: (images: Images) => void;
   dispose: () => void;
 }
 
 function createPainter(svg: ParsedSvg, width: number, height: number): Painter {
-  const { canvas, ctx } = createCanvas(width, height);
-  const texture = new CanvasTexture(canvas);
+  const main = createCanvas(width, height);
+  const scratch = createCanvas(width, height);
+  const texture = new CanvasTexture(main.canvas);
   texture.colorSpace = SRGBColorSpace;
-  let input: SvgPaintInput = {
-    svg,
-    colors: new Map(),
-    selectedRegionId: null,
-    below: null,
-    above: null,
-  };
+  let input: SvgPaintInput = { svg, paints: new Map(), selectedRegionId: null, ...NO_IMAGES };
   const update = (changes: Partial<SvgPaintInput>): void => {
     input = { ...input, ...changes };
-    paintSvg(ctx, width, height, input);
+    paintSvg(main.ctx, scratch.ctx, width, height, input);
     texture.needsUpdate = true;
   };
   update({});
   return {
     texture,
     update,
-    showArtwork: (artwork) => {
-      update(artwork);
-      if (isReadable(ctx)) {
-        return artwork;
+    showImages: (images) => {
+      update(images);
+      if (!isReadable(main.ctx)) {
+        console.warn(
+          'The browser blocked this SVG’s artwork from the 3D view; showing regions only.',
+        );
+        update(NO_IMAGES);
       }
-      console.warn(
-        'The browser blocked this SVG’s artwork from the 3D view; showing regions only.',
-      );
-      const none = { below: null, above: null };
-      update(none);
-      return none;
     },
     dispose: () => {
       texture.dispose();
-      // Releases the canvas backing store now rather than at garbage collection.
-      canvas.width = 0;
-      canvas.height = 0;
+      // Releases the canvas backing stores now rather than at garbage collection.
+      for (const { canvas } of [main, scratch]) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
     },
   };
 }
@@ -119,48 +122,52 @@ function createCanvas(
   return { canvas, ctx };
 }
 
-interface ArtworkLoad {
-  /** Resolves to the rendered below and above artwork; either is `null` if absent or broken. */
-  readonly images: Promise<[HTMLImageElement | null, HTMLImageElement | null]>;
+interface ImageLoad {
+  /** Resolves once every image has loaded; each is `null` if absent or broken. */
+  readonly loaded: Promise<Images>;
   /** Revokes the Blob URLs the images were loaded from. */
   release: () => void;
 }
 
-function loadArtwork(svg: ParsedSvg, width: number, height: number): ArtworkLoad {
-  const toUrl = (fragment: ArtworkFragment | null): string | null =>
-    fragment === null ? null : artworkUrl(fragment, svg, width, height);
-  const below = toUrl(svg.artwork.below);
-  const above = toUrl(svg.artwork.above);
+function loadImages(svg: ParsedSvg, width: number, height: number): ImageLoad {
+  const urls: string[] = [];
+  const load = (fragment: ArtworkFragment | null): Promise<HTMLImageElement | null> => {
+    if (fragment === null) {
+      return Promise.resolve(null);
+    }
+    const markup = artworkMarkup(fragment, svg.viewBox, width, height);
+    const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' }));
+    urls.push(url);
+    return loadImage(url);
+  };
+  const { artwork, toneMasks } = svg;
   return {
-    images: Promise.all([loadImage(below), loadImage(above)]),
+    loaded: Promise.all([
+      load(artwork.below),
+      load(artwork.above),
+      load(toneMasks.layer),
+      load(toneMasks.shade),
+      load(toneMasks.highlight),
+      load(svg.metal),
+    ]).then(([below, above, layer, shade, highlight, metal]) => ({
+      below,
+      above,
+      toneMasks: { layer, shade, highlight },
+      metal,
+    })),
     release: () => {
-      for (const url of [below, above]) {
-        if (url !== null) {
-          URL.revokeObjectURL(url);
-        }
-      }
+      urls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
     },
   };
-}
-
-function artworkUrl(
-  fragment: ArtworkFragment,
-  svg: ParsedSvg,
-  width: number,
-  height: number,
-): string {
-  const markup = artworkMarkup(fragment, svg.viewBox, width, height);
-  return URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' }));
 }
 
 /**
  * Loads SVG markup as an image. Browsers render SVG images without running
  * scripts or fetching external resources, so untrusted files stay inert.
  */
-function loadImage(url: string | null): Promise<HTMLImageElement | null> {
-  if (url === null) {
-    return Promise.resolve(null);
-  }
+function loadImage(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const image = new Image();
     image.onload = () => {

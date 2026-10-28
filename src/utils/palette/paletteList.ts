@@ -60,17 +60,6 @@ export function groupPalette(colors: readonly PaletteColor[]): PaletteGroup[] {
   return Array.from(groups, ([group, members]) => ({ group, colors: members }));
 }
 
-/** Maps each color value to the name of the first palette color with it. */
-export function paletteNamesByColor(colors: readonly PaletteColor[]): ReadonlyMap<string, string> {
-  const names = new Map<string, string>();
-  for (const color of colors) {
-    if (!names.has(color.color)) {
-      names.set(color.color, color.name);
-    }
-  }
-  return names;
-}
-
 function foldText(text: string): string {
   return text
     .normalize('NFD')

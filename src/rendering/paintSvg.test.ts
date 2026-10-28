@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseSvg } from '../utils/svg/parseSvg';
 import type { SvgCanvasContext, SvgPaintInput } from './paintSvg';
 import { paintSvg, SELECTION_OUTLINE_COLORS, SELECTION_OUTLINE_PX } from './paintSvg';
+import { NO_TONE_MASK_IMAGES } from './paintTones';
 
 const style = (value: unknown): string => (typeof value === 'string' ? value : 'gradient');
 
@@ -9,10 +10,14 @@ const style = (value: unknown): string => (typeof value === 'string' ? value : '
  * Records each call (and each fill or stroke with the style in effect) as a
  * short string, plus each change of composite operation.
  */
-function recordingContext(): { ctx: SvgCanvasContext; log: string[] } {
-  const log: string[] = [];
+function recordingContext(
+  log: string[] = [],
+  prefix = '',
+): { ctx: SvgCanvasContext; log: string[] } {
+  const record = (entry: string): number => log.push(prefix + entry);
   let composite: GlobalCompositeOperation = 'source-over';
   const ctx: SvgCanvasContext = {
+    canvas: SCRATCH_CANVAS,
     fillStyle: '',
     strokeStyle: '',
     lineWidth: 1,
@@ -22,24 +27,36 @@ function recordingContext(): { ctx: SvgCanvasContext; log: string[] } {
     },
     set globalCompositeOperation(operation: GlobalCompositeOperation) {
       composite = operation;
-      log.push(`composite ${operation}`);
+      record(`composite ${operation}`);
     },
-    setTransform: (...args: unknown[]) => log.push(`transform ${args.join(',')}`),
-    clearRect: () => log.push('clear'),
-    drawImage: (image: unknown) => log.push(`image ${image === BELOW ? 'below' : 'above'}`),
-    beginPath: () => log.push('begin'),
-    moveTo: (x: number, y: number) => log.push(`move ${String(x)},${String(y)}`),
-    lineTo: () => log.push('line'),
-    closePath: () => log.push('close'),
-    fill: (rule?: unknown) => log.push(`fill ${style(ctx.fillStyle)} ${String(rule)}`),
-    stroke: () => log.push(`stroke ${style(ctx.strokeStyle)} ${String(ctx.lineWidth)}`),
-    setLineDash: () => log.push('dash'),
+    setTransform: (...args: unknown[]) => record(`transform ${args.join(',')}`),
+    clearRect: () => record('clear'),
+    drawImage: (image: unknown) => record(`image ${IMAGE_NAMES.get(image) ?? 'unknown'}`),
+    beginPath: () => record('begin'),
+    moveTo: (x: number, y: number) => record(`move ${String(x)},${String(y)}`),
+    lineTo: () => record('line'),
+    closePath: () => record('close'),
+    fill: (rule?: unknown) => record(`fill ${style(ctx.fillStyle)} ${String(rule)}`),
+    stroke: () => record(`stroke ${style(ctx.strokeStyle)} ${String(ctx.lineWidth)}`),
+    setLineDash: () => record('dash'),
   };
   return { ctx, log };
 }
 
 const BELOW = {} as HTMLImageElement;
 const ABOVE = {} as HTMLImageElement;
+const SHADE = {} as HTMLImageElement;
+const HIGHLIGHT = {} as HTMLImageElement;
+const METAL = {} as HTMLImageElement;
+const SCRATCH_CANVAS = {} as HTMLCanvasElement;
+const IMAGE_NAMES = new Map<unknown, string>([
+  [BELOW, 'below'],
+  [ABOVE, 'above'],
+  [SHADE, 'shade mask'],
+  [HIGHLIGHT, 'highlight mask'],
+  [METAL, 'metal'],
+  [SCRATCH_CANVAS, 'scratch'],
+]);
 
 // Two regions in a 20 × 10 viewBox offset by (10, 0). "pair" holds two shapes with their own fills.
 const SVG = parseSvg(
@@ -47,18 +64,25 @@ const SVG = parseSvg(
     '<g id="pair"><rect x="20" width="5" height="10" fill="#3d7ac8"/><rect x="25" width="5" height="10" fill-rule="evenodd" fill="#2e8b57"/></g></svg>',
 );
 
+/** Paints and returns one log for both canvases; scratch entries start with "scratch: ". */
 const paint = (overrides: Partial<SvgPaintInput> = {}): string[] => {
   const { ctx, log } = recordingContext();
-  paintSvg(ctx, 200, 100, {
+  const { ctx: scratch } = recordingContext(log, 'scratch: ');
+  paintSvg(ctx, scratch, 200, 100, {
     svg: SVG,
-    colors: new Map(),
+    paints: new Map(),
     selectedRegionId: null,
     below: null,
     above: null,
+    toneMasks: NO_TONE_MASK_IMAGES,
+    metal: null,
     ...overrides,
   });
   return log;
 };
+
+const bases = (entries: [string, string][]): SvgPaintInput['paints'] =>
+  new Map(entries.map(([id, color]) => [id, { base: { color } }]));
 
 describe('paintSvg', () => {
   it('clears, then fills each shape with its original color in viewBox units', () => {
@@ -77,7 +101,7 @@ describe('paintSvg', () => {
   });
 
   it('paints every shape of a region in its assigned color', () => {
-    const log = paint({ colors: new Map([['region-1', '#ffffff']]) });
+    const log = paint({ paints: bases([['region-1', '#ffffff']]) });
     expect(log.filter((entry) => entry.startsWith('fill'))).toEqual([
       'fill #c8553d nonzero',
       'fill #ffffff nonzero',
@@ -91,7 +115,7 @@ describe('paintSvg', () => {
     );
     const log = paint({ svg: unpainted });
     expect(log.some((entry) => entry.startsWith('fill'))).toBe(false);
-    expect(paint({ svg: unpainted, colors: new Map([['region-0', '#000000']]) })).toContain(
+    expect(paint({ svg: unpainted, paints: bases([['region-0', '#000000']]) })).toContain(
       'fill #000000 nonzero',
     );
   });
@@ -136,5 +160,75 @@ describe('paintSvg', () => {
 
   it('draws no outline without a selection', () => {
     expect(paint().some((entry) => entry.startsWith('stroke'))).toBe(false);
+  });
+
+  it('paints each used tone on the scratch canvas, cuts it to its mask and lays it over', () => {
+    const log = paint({
+      paints: new Map([
+        ['region-0', { base: { color: '#c8553d' }, shade: { color: '#5c4033' } }],
+        ['region-1', { highlight: { color: '#f0e0d0' }, layer: { color: '#2e8b57' } }],
+      ]),
+      toneMasks: { layer: null, shade: SHADE, highlight: HIGHLIGHT },
+      above: ABOVE,
+    });
+    const order = log.filter((entry) => /(image|composite|fill) /.test(entry));
+    expect(order).toEqual([
+      'fill #c8553d nonzero',
+      'fill #3d7ac8 nonzero',
+      'fill #2e8b57 evenodd',
+      // No layer mask, so the layer paint is not drawn.
+      'scratch: composite source-over',
+      'scratch: fill #5c4033 nonzero',
+      'scratch: composite destination-in',
+      'scratch: image shade mask',
+      'scratch: composite source-over',
+      'image scratch',
+      'scratch: composite source-over',
+      'scratch: fill #f0e0d0 nonzero',
+      'scratch: fill #f0e0d0 evenodd',
+      'scratch: composite destination-in',
+      'scratch: image highlight mask',
+      'scratch: composite source-over',
+      'image scratch',
+      'composite hard-light',
+      'image above',
+      'composite source-over',
+    ]);
+  });
+
+  it('skips tones that no region uses', () => {
+    const log = paint({ toneMasks: { layer: SHADE, shade: SHADE, highlight: HIGHLIGHT } });
+    expect(log.some((entry) => entry.startsWith('scratch: '))).toBe(false);
+  });
+
+  it('replaces the base coat of metallic regions with the tinted metal picture', () => {
+    const log = paint({
+      paints: new Map([['region-1', { base: { color: '#b27f34', metallic: true } }]]),
+      metal: METAL,
+      toneMasks: { layer: null, shade: SHADE, highlight: null },
+    });
+    const order = log.filter((entry) => /(image|composite|fill) /.test(entry));
+    expect(order).toEqual([
+      'fill #c8553d nonzero',
+      'fill #b27f34 nonzero',
+      'fill #b27f34 evenodd',
+      'scratch: composite source-over',
+      'scratch: fill #b27f34 nonzero',
+      'scratch: fill #b27f34 evenodd',
+      'scratch: composite hard-light',
+      'scratch: image metal',
+      'scratch: composite destination-in',
+      'scratch: fill #000000 nonzero',
+      'scratch: fill #000000 evenodd',
+      'scratch: composite source-over',
+      'image scratch',
+    ]);
+  });
+
+  it('paints metallic regions flat when the drawing has no metal picture', () => {
+    const log = paint({
+      paints: new Map([['region-1', { base: { color: '#b27f34', metallic: true } }]]),
+    });
+    expect(log.some((entry) => entry.startsWith('scratch: '))).toBe(false);
   });
 });
