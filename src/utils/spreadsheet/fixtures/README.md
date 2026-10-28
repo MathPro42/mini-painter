@@ -10,5 +10,6 @@ soffice --headless --convert-to xlsx palette.fods
 
 The first sheet has a title row, a heading row with alternative names ("Hex code",
 "Category"), hex colors with and without `#`, an `rgb()` color, numbers, a boolean,
-a formula, a row without a color, a blank row and non-Latin characters. The second sheet
+a formula, a row without a color, a blank row, non-Latin characters, an `rgba()` wash,
+and recipe columns ("Shade", "Layer") that name other rows by numeric "Id" or by name. The second sheet
 must be ignored. Keep every name generic (see the content rule in CLAUDE.md).

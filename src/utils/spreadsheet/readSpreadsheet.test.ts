@@ -10,7 +10,7 @@ describe('readSpreadsheet', () => {
   it('tells .xlsx and .xls files apart by content, and reads the same cells from both', async () => {
     const fromXlsx = await readSpreadsheet(await loadFixture(xlsxFixture));
     const fromXls = await readSpreadsheet(await loadFixture(xlsFixture));
-    expect(fromXlsx[3]).toEqual(['brick red', '#c8553d', 'base', '1']);
+    expect(fromXlsx[3]).toEqual(['brick red', '#c8553d', 'base', '1', '1', '6', '3']);
     expect(fromXls).toEqual(fromXlsx);
   });
 

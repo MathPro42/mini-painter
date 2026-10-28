@@ -10,30 +10,41 @@
      <table:table-cell office:value-type="string"><text:p>Hex code</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>Category</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>Note</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Id</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Shade</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>Layer</text:p></table:table-cell>
     </table:table-row>
     <table:table-row>
      <table:table-cell office:value-type="string"><text:p>brick red</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>#c8553d</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>base</text:p></table:table-cell>
      <table:table-cell office:value-type="float" office:value="1"><text:p>1</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="1"><text:p>1</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="6"><text:p>6</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="3"><text:p>3</text:p></table:table-cell>
     </table:table-row>
     <table:table-row>
      <table:table-cell office:value-type="string"><text:p>sea green</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>2E8B57</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>base</text:p></table:table-cell>
      <table:table-cell office:value-type="float" office:value="2.5"><text:p>2.5</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="2"><text:p>2</text:p></table:table-cell>
+     <table:table-cell/>
+     <table:table-cell office:value-type="string"><text:p>Slate Blue</text:p></table:table-cell>
     </table:table-row>
     <table:table-row>
      <table:table-cell office:value-type="string"><text:p>mustard</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>rgb(224, 177, 60)</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>layer</text:p></table:table-cell>
      <table:table-cell office:value-type="boolean" office:boolean-value="true"><text:p>TRUE</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="3"><text:p>3</text:p></table:table-cell>
     </table:table-row>
     <table:table-row>
      <table:table-cell office:value-type="string"><text:p>slate blue</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>#3d5a80</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>layer</text:p></table:table-cell>
      <table:table-cell table:formula="of:=1/4" office:value-type="float" office:value="0.25"><text:p>0.25</text:p></table:table-cell>
+     <table:table-cell office:value-type="float" office:value="4"><text:p>4</text:p></table:table-cell>
     </table:table-row>
     <table:table-row>
      <table:table-cell office:value-type="string"><text:p>no color here</text:p></table:table-cell>
@@ -43,11 +54,16 @@
     <table:table-row>
      <table:table-cell office:value-type="string"><text:p>grüne Wiese</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>#6a994e</text:p></table:table-cell>
+     <table:table-cell/>
+     <table:table-cell/>
+     <table:table-cell office:value-type="float" office:value="5"><text:p>5</text:p></table:table-cell>
     </table:table-row>
     <table:table-row>
      <table:table-cell office:value-type="string"><text:p>Ωmega teal</text:p></table:table-cell>
-     <table:table-cell office:value-type="string"><text:p>#2a9d8f</text:p></table:table-cell>
+     <table:table-cell office:value-type="string"><text:p>rgba(42, 157, 143, 0.6)</text:p></table:table-cell>
      <table:table-cell office:value-type="string"><text:p>wash</text:p></table:table-cell>
+     <table:table-cell/>
+     <table:table-cell office:value-type="float" office:value="6"><text:p>6</text:p></table:table-cell>
     </table:table-row>
    </table:table>
    <table:table table:name="Notes">

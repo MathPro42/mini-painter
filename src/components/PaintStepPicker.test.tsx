@@ -5,7 +5,12 @@ import { createAppState } from '../state/appState';
 import type { AppState } from '../state/appState';
 import selectionMapSvg from '../utils/svg/fixtures/selection-map.svg?raw';
 import toneMasksSvg from '../utils/svg/fixtures/tone-masks.svg?raw';
-import { PaintStepPicker, UNAVAILABLE_STEP_TEXT, UNPAINTED_INPUT_COLOR } from './PaintStepPicker';
+import {
+  PaintStepPicker,
+  RECIPE_TOGGLE_LABEL,
+  UNAVAILABLE_STEP_TEXT,
+  UNPAINTED_INPUT_COLOR,
+} from './PaintStepPicker';
 
 /** Renders the picker for the drawing's first region ("left" in the tone-mask sheet). */
 const renderPicker = (svg = toneMasksSvg): AppState => {
@@ -82,6 +87,30 @@ describe('PaintStepPicker', () => {
       state.setActiveStep('shade');
     });
     expect(colorInput()).toHaveValue(UNPAINTED_INPUT_COLOR);
+  });
+
+  it('offers to use recipes once the palette in use has one', async () => {
+    const state = renderPicker();
+    expect(screen.queryByLabelText(RECIPE_TOGGLE_LABEL)).not.toBeInTheDocument();
+    await act(() => {
+      state.addPalette('recipes', [
+        { name: 'brick red', color: '#c8553d', recipe: { shade: 'umber wash #5c4033' } },
+        { name: 'umber wash', color: '#5c4033', opacity: 0.6 },
+      ]);
+    });
+    const toggle = screen.getByLabelText(RECIPE_TOGGLE_LABEL);
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    expect(state.useRecipes.value).toBe(false);
+    expect(toggle).not.toBeChecked();
+  });
+
+  it('shows a see-through step paint over a checkerboard', async () => {
+    const state = renderPicker();
+    await act(() => {
+      state.setRegionStep('region-0', 'shade', { color: '#5c4033', opacity: 0.6 });
+    });
+    expect(stepButton('Shade').querySelector('.swatch')).toHaveClass('swatch--see-through');
   });
 
   it('asks for a region first', () => {

@@ -9,7 +9,18 @@ import type { SavedPalettes } from './savedPalettes';
 
 const SAVED: SavedPalettes = {
   palettes: [
-    { name: 'base coats', colors: [{ name: 'brick red', color: '#c8553d', group: 'base' }] },
+    {
+      name: 'base coats',
+      colors: [
+        {
+          name: 'brick red',
+          color: '#c8553d',
+          group: 'base',
+          recipe: { shade: 'umber wash #5c4033' },
+        },
+        { name: 'umber wash', color: '#5c4033', group: 'wash', opacity: 0.6 },
+      ],
+    },
     { name: 'washes', colors: [] },
   ],
   activeIndex: 1,
@@ -53,6 +64,12 @@ describe('normalizeSavedPalettes', () => {
             { name: 'ink', color: '#111111' },
             { name: 'teal', color: 'teal' },
             { name: 'sea green', color: '#2e8b57', group: 7 },
+            {
+              name: 'glaze',
+              color: '#5c4033',
+              opacity: 7,
+              recipe: { layer: 3, shade: 'ink #111111' },
+            },
             null,
           ],
         },
@@ -66,6 +83,7 @@ describe('normalizeSavedPalettes', () => {
           colors: [
             { name: 'ink', color: '#111111' },
             { name: 'sea green', color: '#2e8b57' },
+            { name: 'glaze', color: '#5c4033', recipe: { shade: 'ink #111111' } },
           ],
         },
         { name: 'metals', colors: [] },

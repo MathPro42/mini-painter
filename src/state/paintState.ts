@@ -2,10 +2,10 @@ import { batch, computed, signal } from '@preact/signals-core';
 import type { ReadonlySignal, Signal } from '@preact/signals-core';
 import { createHistory, pushHistory, redoHistory, undoHistory } from '../utils/history';
 import type { History } from '../utils/history';
+import { randomRegionPaints } from '../utils/paint/recipePaint';
 import {
   PAINT_STEPS,
   parseStepPaint,
-  randomBasePaints,
   sameRegionPaints,
   withStep,
 } from '../utils/paint/regionPaint';
@@ -29,6 +29,8 @@ export interface PaintState {
   readonly selectedRegionId: ReadonlySignal<string | null>;
   /** The step palette picks and the color picker apply to. */
   readonly activeStep: ReadonlySignal<PaintStep>;
+  /** Whether Base picks and Randomize also use the tones a paint's recipe names. On at first. */
+  readonly useRecipes: ReadonlySignal<boolean>;
   /**
    * Parses SVG markup and makes it the current drawing, clearing paints,
    * selection and undo history, and going back to the Base step. Throws a
@@ -47,15 +49,23 @@ export interface PaintState {
    */
   setRegionStep: (id: string, step: PaintStep, paint: StepPaint | null) => void;
   /**
+   * Replaces all of a region's paints, as one undo step; an empty paint
+   * clears the region. Throws like setRegionStep.
+   */
+  setRegionPaint: (id: string, paint: RegionPaint) => void;
+  /** Turns recipes on or off for Base picks and Randomize. Not an undo step. */
+  setUseRecipes: (on: boolean) => void;
+  /**
    * Shows a paint without recording an undo step, for live feedback while
    * the user is still choosing. The next setRegionStep records the change;
    * undo discards it. Throws like setRegionStep.
    */
   previewRegionStep: (id: string, step: PaintStep, paint: StepPaint) => void;
   /**
-   * Gives every region a random Base from `colors` and clears its other
-   * steps, as one undo step. Does nothing without a drawing or colors.
-   * `random` defaults to Math.random.
+   * Gives every region a random Base from `colors`, plus that paint's recipe
+   * tones when useRecipes is on, and clears its other steps, as one undo
+   * step. Does nothing without a drawing or colors. `random` defaults to
+   * Math.random.
    */
   randomizeRegions: (colors: readonly PaletteColor[], random?: () => number) => void;
   readonly canUndo: ReadonlySignal<boolean>;
@@ -71,6 +81,7 @@ export function createPaintState(): PaintState {
   const svg = signal<ParsedSvg | null>(null);
   const selectedRegionId = signal<string | null>(null);
   const activeStep = signal<PaintStep>('base');
+  const useRecipes = signal(true);
   const paints = createPaintHistory();
 
   const requireRegion = (id: string): string => {
@@ -79,14 +90,13 @@ export function createPaintState(): PaintState {
     }
     return id;
   };
-  const withRegionStep = (id: string, step: PaintStep, paint: StepPaint | null): RegionPaints =>
-    withRegionPaint(paints.regionPaints.peek(), requireRegion(id), step, paint);
 
   return {
     svg,
     regionPaints: paints.regionPaints,
     selectedRegionId,
     activeStep,
+    useRecipes,
     loadSvg: (source) => {
       const parsed = parseSvg(source);
       // One update, so subscribers never see the new drawing with old paints.
@@ -106,17 +116,15 @@ export function createPaintState(): PaintState {
       }
       activeStep.value = step;
     },
-    setRegionStep: (id, step, paint) => {
-      paints.commit(withRegionStep(id, step, paint));
-    },
-    previewRegionStep: (id, step, paint) => {
-      paints.preview(withRegionStep(id, step, paint));
+    ...createPaintActions(paints, requireRegion),
+    setUseRecipes: (on) => {
+      useRecipes.value = on;
     },
     randomizeRegions: (colors, random = Math.random) => {
       const ids = svg.peek()?.regions.map((region) => region.id) ?? [];
-      const picks = randomBasePaints(ids, colors, random);
+      const picks = randomRegionPaints(ids, colors, random, useRecipes.peek());
       if (picks.size > 0) {
-        paints.commit(new Map(Array.from(picks, ([id, base]) => [id, { base }])));
+        paints.commit(picks);
       }
     },
     canUndo: paints.canUndo,
@@ -126,14 +134,34 @@ export function createPaintState(): PaintState {
   };
 }
 
-/** A copy of `paints` with one step of one region changed; a region left empty is dropped. */
-function withRegionPaint(
-  paints: RegionPaints,
-  id: string,
-  step: PaintStep,
-  paint: StepPaint | null,
-): RegionPaints {
-  const region = withStep(paints.get(id), step, paint && parseStepPaint(paint));
+type PaintActions = Pick<PaintState, 'setRegionStep' | 'setRegionPaint' | 'previewRegionStep'>;
+
+/** The ways to paint a region; `requireRegion` throws for ids not in the drawing. */
+function createPaintActions(
+  paints: PaintHistory,
+  requireRegion: (id: string) => string,
+): PaintActions {
+  const withRegionStep = (id: string, step: PaintStep, paint: StepPaint | null): RegionPaints => {
+    const current = paints.regionPaints.peek();
+    const region = withStep(current.get(id), step, paint && parseStepPaint(paint));
+    return withRegion(current, requireRegion(id), region);
+  };
+  return {
+    setRegionStep: (id, step, paint) => {
+      paints.commit(withRegionStep(id, step, paint));
+    },
+    setRegionPaint: (id, paint) => {
+      const region = parseRegionPaint(paint);
+      paints.commit(withRegion(paints.regionPaints.peek(), requireRegion(id), region));
+    },
+    previewRegionStep: (id, step, paint) => {
+      paints.preview(withRegionStep(id, step, paint));
+    },
+  };
+}
+
+/** A copy of `paints` with region `id` set to `region`; an empty region is dropped. */
+function withRegion(paints: RegionPaints, id: string, region: RegionPaint): RegionPaints {
   const next = new Map(paints);
   if (Object.keys(region).length === 0) {
     next.delete(id);
@@ -141,6 +169,18 @@ function withRegionPaint(
     next.set(id, region);
   }
   return next;
+}
+
+/** Validates every step of a region paint. Throws a RangeError for an invalid color. */
+function parseRegionPaint(paint: RegionPaint): RegionPaint {
+  let parsed: RegionPaint = {};
+  for (const step of PAINT_STEPS) {
+    const stepPaint = paint[step];
+    if (stepPaint !== undefined) {
+      parsed = withStep(parsed, step, parseStepPaint(stepPaint));
+    }
+  }
+  return parsed;
 }
 
 interface PaintHistory {

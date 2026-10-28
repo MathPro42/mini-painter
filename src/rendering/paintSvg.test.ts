@@ -77,6 +77,19 @@ describe('paintSvg', () => {
     ]);
   });
 
+  it('multiplies a wash used as Base into the artwork below', () => {
+    const wash = { color: '#5c4033', opacity: 0.6 };
+    const log = paint({ paints: new Map([['region-0', { base: wash }]]) });
+    const start = log.indexOf('composite multiply');
+    expect(start).toBeGreaterThan(-1);
+    expect(
+      log
+        .slice(start)
+        .filter((entry) => /^(fill|composite)/.test(entry))
+        .slice(0, 3),
+    ).toEqual(['composite multiply', 'fill #5c4033 nonzero', 'composite source-over']);
+  });
+
   it('leaves unpainted regions clear', () => {
     const unpainted = parseSvg(
       '<svg viewBox="0 0 10 10"><g id="selectionMap"><g><rect width="5" height="5"/></g></g></svg>',

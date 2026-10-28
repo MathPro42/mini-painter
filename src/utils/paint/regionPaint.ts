@@ -1,25 +1,11 @@
-import { parseHexColor } from '../color';
+import { normalizeOpacity, parseHexColor } from '../color';
 import type { PaletteColor } from '../palette/paletteColor';
+import { PAINT_STEPS } from './paintSteps';
+import type { PaintStep } from './paintSteps';
 
-/**
- * The four steps of painting a part, in the order they go on: a base coat,
- * a layer over it, a shade in the recesses and a highlight on the edges.
- */
-export type PaintStep = 'base' | ToneStep;
-
-/** The steps after the base coat, each shown only where the drawing's mask for it allows. */
-export type ToneStep = 'layer' | 'shade' | 'highlight';
-
-export const TONE_STEPS: readonly ToneStep[] = ['layer', 'shade', 'highlight'];
-export const PAINT_STEPS: readonly PaintStep[] = ['base', ...TONE_STEPS];
-
-/** Display names, also used in hints ("Pick a Shade paint"). */
-export const PAINT_STEP_LABELS: Readonly<Record<PaintStep, string>> = {
-  base: 'Base',
-  layer: 'Layer',
-  shade: 'Shade',
-  highlight: 'Highlight',
-};
+// Steps live in their own module so palette recipes can name them without importing paints.
+export { PAINT_STEP_LABELS, PAINT_STEPS, TONE_STEPS } from './paintSteps';
+export type { PaintStep, ToneStep } from './paintSteps';
 
 /** The paint used for one step. */
 export interface StepPaint {
@@ -29,6 +15,8 @@ export interface StepPaint {
   readonly name?: string;
   /** Metallic paints get a sheen in the render. */
   readonly metallic?: boolean;
+  /** See-through paints (washes), strictly between 0 and 1. Missing means opaque. */
+  readonly opacity?: number;
 }
 
 /** The paints on one region; a missing step is not painted. */
@@ -52,15 +40,18 @@ export function withStep(
 
 /**
  * Validates a step paint: the color becomes lowercase `#rrggbb`, a blank
- * name is dropped. Throws a RangeError for an invalid color.
+ * name and an opacity that isn't see-through are dropped. Throws a
+ * RangeError for an invalid color.
  */
 export function parseStepPaint(paint: StepPaint): StepPaint {
   const color = parseHexColor(paint.color);
   const name = paint.name?.trim() ?? '';
+  const opacity = normalizeOpacity(paint.opacity);
   return {
     color,
     ...(name === '' ? {} : { name }),
     ...(paint.metallic === true ? { metallic: true } : {}),
+    ...(opacity === null ? {} : { opacity }),
   };
 }
 
@@ -70,7 +61,13 @@ export function stepPaintFromPalette(color: PaletteColor): StepPaint {
     color: color.color,
     name: color.name,
     ...(isMetallicPaint(color) ? { metallic: true } : {}),
+    ...(color.opacity === undefined ? {} : { opacity: color.opacity }),
   };
+}
+
+/** Whether a paint is a wash: see-through, so it tints what is under it. */
+export function isWash(paint: StepPaint): boolean {
+  return paint.opacity !== undefined;
 }
 
 /** Whether a palette color is a metallic paint, judged by its group ("Metallic", "metals"…). */
@@ -84,7 +81,10 @@ export function sameStepPaint(a: StepPaint | undefined, b: StepPaint | undefined
     return a === b;
   }
   return (
-    a.color === b.color && a.name === b.name && (a.metallic ?? false) === (b.metallic ?? false)
+    a.color === b.color &&
+    a.name === b.name &&
+    (a.metallic ?? false) === (b.metallic ?? false) &&
+    a.opacity === b.opacity
   );
 }
 
@@ -100,30 +100,4 @@ export function sameRegionPaints(
 ): boolean {
   const ids = new Set([...a.keys(), ...b.keys()]);
   return [...ids].every((id) => sameRegionPaint(a.get(id), b.get(id)));
-}
-
-// Washes and shades are see-through; as a base coat they make odd random schemes.
-const WASH_GROUP = /shade|wash/i;
-
-/**
- * Picks a random Base paint for each region from `colors`, preferring paints
- * that aren't shades or washes when there are any. `random` returns a number
- * in [0, 1), like Math.random, so tests can pass a seeded one. Returns an
- * empty map when there are no colors.
- */
-export function randomBasePaints(
-  regionIds: readonly string[],
-  colors: readonly PaletteColor[],
-  random: () => number,
-): Map<string, StepPaint> {
-  const opaque = colors.filter((color) => !WASH_GROUP.test(color.group ?? ''));
-  const pool = opaque.length > 0 ? opaque : colors;
-  const result = new Map<string, StepPaint>();
-  for (const id of regionIds) {
-    const color = pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
-    if (color !== undefined) {
-      result.set(id, stepPaintFromPalette(color));
-    }
-  }
-  return result;
 }

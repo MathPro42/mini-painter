@@ -1,7 +1,9 @@
 import type { JSX } from 'preact';
 import type { AppState } from '../state/appState';
+import type { StepPaint } from '../utils/paint/regionPaint';
 import type { SvgRegion } from '../utils/svg/types';
 import { PaintStepPicker } from './PaintStepPicker';
+import { swatchProps } from './swatchProps';
 import { useSignalValue } from './useSignalValue';
 
 interface RegionPanelProps {
@@ -23,8 +25,8 @@ export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
   if (svg === null) {
     return null;
   }
-  const colorOf = (region: SvgRegion): string | null =>
-    paints.get(region.id)?.base?.color ?? region.fill;
+  const baseOf = (region: SvgRegion): StepPaint | null =>
+    paints.get(region.id)?.base ?? (region.fill === null ? null : { color: region.fill });
   const selected = svg.regions.find((region) => region.id === selectedId) ?? null;
   const colors = palette?.colors ?? [];
 
@@ -58,11 +60,7 @@ export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
                 state.selectRegion(region.id === selectedId ? null : region.id);
               }}
             >
-              <span
-                class={colorOf(region) === null ? 'swatch swatch--empty' : 'swatch'}
-                style={{ backgroundColor: colorOf(region) ?? 'transparent' }}
-                aria-hidden="true"
-              />
+              <span {...swatchProps(baseOf(region))} aria-hidden="true" />
               <RegionText name={region.name} paint={paints.get(region.id)?.base?.name} />
             </button>
           </li>

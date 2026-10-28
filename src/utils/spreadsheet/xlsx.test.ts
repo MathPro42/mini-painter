@@ -28,16 +28,16 @@ describe('readXlsxFirstSheet', () => {
     expect(rows).toEqual([
       ['Sample palette'],
       [],
-      ['Name', 'Hex code', 'Category', 'Note'],
-      ['brick red', '#c8553d', 'base', '1'],
-      ['sea green', '2E8B57', 'base', '2.5'],
+      ['Name', 'Hex code', 'Category', 'Note', 'Id', 'Shade', 'Layer'],
+      ['brick red', '#c8553d', 'base', '1', '1', '6', '3'],
+      ['sea green', '2E8B57', 'base', '2.5', '2', '', 'Slate Blue'],
       // LibreOffice stores TRUE as the number 1 with a boolean format.
-      ['mustard', 'rgb(224, 177, 60)', 'layer', '1'],
-      ['slate blue', '#3d5a80', 'layer', '0.25'],
+      ['mustard', 'rgb(224, 177, 60)', 'layer', '1', '3'],
+      ['slate blue', '#3d5a80', 'layer', '0.25', '4'],
       ['no color here', 'tbd'],
       [],
-      ['grüne Wiese', '#6a994e'],
-      ['Ωmega teal', '#2a9d8f', 'wash'],
+      ['grüne Wiese', '#6a994e', '', '', '5'],
+      ['Ωmega teal', 'rgba(42, 157, 143, 0.6)', 'wash', '', '6'],
     ]);
   });
 

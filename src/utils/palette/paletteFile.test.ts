@@ -15,13 +15,19 @@ import {
 const loadFixture = async (url: string): Promise<Uint8Array> =>
   new Uint8Array(await (await fetch(url)).arrayBuffer());
 
+// Recipes name rows by numeric Id ("1"), or by name ignoring case ("Slate Blue").
 const FIXTURE_COLORS: PaletteColor[] = [
-  { name: 'brick red', color: '#c8553d', group: 'base' },
-  { name: 'sea green', color: '#2e8b57', group: 'base' },
+  {
+    name: 'brick red',
+    color: '#c8553d',
+    group: 'base',
+    recipe: { layer: 'mustard #e0b13c', shade: 'ωmega teal #2a9d8f' },
+  },
+  { name: 'sea green', color: '#2e8b57', group: 'base', recipe: { layer: 'slate blue #3d5a80' } },
   { name: 'mustard', color: '#e0b13c', group: 'layer' },
   { name: 'slate blue', color: '#3d5a80', group: 'layer' },
   { name: 'grüne Wiese', color: '#6a994e' },
-  { name: 'Ωmega teal', color: '#2a9d8f', group: 'wash' },
+  { name: 'Ωmega teal', color: '#2a9d8f', group: 'wash', opacity: 0.6 },
 ];
 
 describe('readPaletteFile', () => {
@@ -48,7 +54,29 @@ describe('writePaletteFile', () => {
   it('writes an .xlsx file that reads back as the same palette', async () => {
     const bytes = writePaletteFile(FIXTURE_COLORS);
     expect(await readPaletteFile(bytes)).toEqual({ colors: FIXTURE_COLORS, skipped: 0 });
-    expect((await readSpreadsheet(bytes))[0]).toEqual(['Name', 'Value', 'Type']);
+    expect((await readSpreadsheet(bytes))[0]).toEqual([
+      'Name',
+      'Value',
+      'Type',
+      'Id',
+      'Layer',
+      'Shade',
+      'Highlight',
+    ]);
+  });
+
+  it('keeps washes and recipes through an export and import', async () => {
+    const colors: PaletteColor[] = [
+      {
+        name: 'brick red',
+        color: '#c8553d',
+        group: 'base',
+        recipe: { layer: 'coral #e07a5f', shade: 'umber wash #5c4033' },
+      },
+      { name: 'coral', color: '#e07a5f', group: 'layer', recipe: { shade: 'umber wash #5c4033' } },
+      { name: 'umber wash', color: '#5c4033', group: 'wash', opacity: 0.6 },
+    ];
+    expect(await readPaletteFile(writePaletteFile(colors))).toEqual({ colors, skipped: 0 });
   });
 });
 
@@ -66,12 +94,36 @@ describe('paletteFromRows', () => {
     ]);
   });
 
-  it('names unnamed colors by their hex value', () => {
+  it('names unnamed colors by their hex value, keeping any alpha as the opacity', () => {
     const rows = [['RGB'], ['rgb(200, 85, 61)'], ['#2e8b57aa']];
     expect(paletteFromRows(rows).colors).toEqual([
       { name: '#c8553d', color: '#c8553d' },
-      { name: '#2e8b57', color: '#2e8b57' },
+      { name: '#2e8b57', color: '#2e8b57', opacity: 0.667 },
     ]);
+  });
+
+  it('keeps the alpha of rgba() washes', () => {
+    const rows = [
+      ['Name', 'Value', 'Type'],
+      ['umber wash', 'Rgba(92, 64, 51,.6)', 'Shade'],
+    ];
+    expect(paletteFromRows(rows).colors).toEqual([
+      { name: 'umber wash', color: '#5c4033', group: 'Shade', opacity: 0.6 },
+    ]);
+  });
+
+  it('reads recipes from Layer, Shade and Highlight columns naming rows by Id', () => {
+    const rows = [
+      ['Name', 'Value', 'Id', 'Shade', 'Layer', 'Highlight'],
+      ['brick red', '#c8553d', 'p-1', 'p-3', 'p-2', 'p-9'],
+      ['coral', '#e07a5f', 'p-2', '', '', ''],
+      ['umber wash', 'rgba(92, 64, 51, .6)', 'p-3', '', '', ''],
+    ];
+    expect(paletteFromRows(rows).colors[0]).toEqual({
+      name: 'brick red',
+      color: '#c8553d',
+      recipe: { layer: 'coral #e07a5f', shade: 'umber wash #5c4033' },
+    });
   });
 
   it('falls back to the hex value when the name cell is unusable', () => {
@@ -139,6 +191,19 @@ describe('paletteToRows', () => {
       ['Name', 'Value', 'Type'],
       ['brick red', '#c8553d', 'base'],
       ['ink', '#111111', ''],
+    ]);
+  });
+
+  it('writes washes as rgba() and recipes as Ids', () => {
+    expect(
+      paletteToRows([
+        { name: 'brick red', color: '#c8553d', recipe: { shade: 'umber wash #5c4033' } },
+        { name: 'umber wash', color: '#5c4033', opacity: 0.6 },
+      ]),
+    ).toEqual([
+      ['Name', 'Value', 'Id', 'Layer', 'Shade', 'Highlight'],
+      ['brick red', '#c8553d', '1', '', '2', ''],
+      ['umber wash', 'rgba(92, 64, 51, 0.6)', '2', '', '', ''],
     ]);
   });
 
