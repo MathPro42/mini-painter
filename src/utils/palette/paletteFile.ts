@@ -51,6 +51,11 @@ export async function readPaletteFile(bytes: Uint8Array): Promise<PaletteImport>
   return paletteFromRows(await readSpreadsheet(bytes));
 }
 
+/** A download name for an exported palette: its name, minus characters file systems reject. */
+export function paletteFileName(paletteName: string): string {
+  return `${paletteName.replace(/[\\/:*?"<>|]/g, '-')}.xlsx`;
+}
+
 /** Builds an .xlsx file with one row per color, under PALETTE_HEADERS. */
 export function writePaletteFile(colors: readonly PaletteColor[]): Uint8Array {
   return writeXlsx(paletteToRows(colors), 'Palette');

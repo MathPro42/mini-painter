@@ -1,9 +1,30 @@
+import { MAX_PALETTE_COLORS, paletteColorKey } from './paletteColor';
 import type { PaletteColor } from './paletteColor';
 
 /** Colors listed under one heading. `group` is `null` for colors without one. */
 export interface PaletteGroup {
   readonly group: string | null;
   readonly colors: readonly PaletteColor[];
+}
+
+/**
+ * Appends the colors not already present (same name, ignoring case, and same
+ * color), up to MAX_PALETTE_COLORS. Returns `existing` itself when nothing is new.
+ */
+export function appendPaletteColors(
+  existing: readonly PaletteColor[],
+  additions: readonly PaletteColor[],
+): readonly PaletteColor[] {
+  const seen = new Set(existing.map(paletteColorKey));
+  const added: PaletteColor[] = [];
+  for (const color of additions) {
+    const key = paletteColorKey(color);
+    if (!seen.has(key) && existing.length + added.length < MAX_PALETTE_COLORS) {
+      seen.add(key);
+      added.push(color);
+    }
+  }
+  return added.length === 0 ? existing : [...existing, ...added];
 }
 
 /**

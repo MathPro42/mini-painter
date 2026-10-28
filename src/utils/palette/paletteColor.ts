@@ -17,7 +17,7 @@ export interface PaletteColorInput {
   readonly group?: string | undefined;
 }
 
-/** A palette holds at most this many colors. */
+/** One palette holds at most this many colors. */
 export const MAX_PALETTE_COLORS = 2000;
 
 /** Longer names and groups are cut to this many characters. */
@@ -28,7 +28,7 @@ export const MAX_PALETTE_TEXT_LENGTH = 80;
 const UNPRINTABLE_OR_SPACE = /[\s\u0000-\u001f\u007f]+/g;
 
 /** Collapses whitespace and control characters to single spaces, trims, and caps the length. */
-function cleanText(value: string): string {
+export function cleanPaletteText(value: string): string {
   return value.replace(UNPRINTABLE_OR_SPACE, ' ').trim().slice(0, MAX_PALETTE_TEXT_LENGTH).trim();
 }
 
@@ -38,12 +38,12 @@ function cleanText(value: string): string {
  * is blank. A blank group is dropped.
  */
 export function normalizePaletteColor(input: PaletteColorInput): PaletteColor | null {
-  const name = cleanText(input.name);
+  const name = cleanPaletteText(input.name);
   const color = normalizeHexColor(input.color);
   if (name === '' || color === null) {
     return null;
   }
-  const group = cleanText(input.group ?? '');
+  const group = cleanPaletteText(input.group ?? '');
   return group === '' ? { name, color } : { name, color, group };
 }
 

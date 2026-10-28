@@ -20,12 +20,18 @@ export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
   const svg = useSignalValue(state.svg);
   const colors = useSignalValue(state.regionColors);
   const selectedId = useSignalValue(state.selectedRegionId);
-  const palette = useSignalValue(state.palette);
+  const palettes = useSignalValue(state.palettes);
+  const activeId = useSignalValue(state.activePaletteId);
   if (svg === null) {
     return null;
   }
   const colorOf = (region: SvgRegion): string | null => colors.get(region.id) ?? region.fill;
-  const paintNames = paletteNamesByColor(palette);
+  // Names from the palette in use win; other palettes still name colors painted from them.
+  const paintNames = paletteNamesByColor(
+    [...palettes]
+      .sort((a, b) => Number(b.id === activeId) - Number(a.id === activeId))
+      .flatMap((palette) => palette.colors),
+  );
   const paintOf = (region: SvgRegion): string | undefined => {
     const color = colorOf(region);
     return color === null ? undefined : paintNames.get(color);

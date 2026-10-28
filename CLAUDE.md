@@ -96,13 +96,16 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   calls `handle.pickRegion(x, y)`, then `state.selectRegion()`. Rendering never writes state.
 - Components read signals with `components/useSignalValue.ts`, which re-renders on change.
 - `AppState` is composed from `state/paintState.ts` (drawing, region colors, undo history)
-  and `state/paletteState.ts` (named colors). Undo covers region colors only. Every
+  and `state/paletteState.ts` (named palettes, one in use). Undo covers region colors only. Every
   `setRegionColor` is one step; `previewRegionColor` shows a color without a step (the color
   picker previews on `input` and commits on `change`). `loadSvg` clears the history.
 - Palette files: `utils/palette/paletteFile.ts` turns the first sheet into colors (header
   detection, `rgb()`/hex parsing) and writes exports. `utils/spreadsheet/readSpreadsheet.ts`
   picks the reader by content, not extension: zip → `.xlsx`, compound file → `.xls` (BIFF8),
   anything else → delimited text. Each reader bounds-checks its input and throws `RangeError`.
+- Palettes persist through a `KeyValueStorage` passed to `createAppState({ storage })`.
+  `main.tsx` passes `localStorage` (via `state/browserStorage.ts`); tests pass a fake or
+  nothing. Every palette change saves; `utils/palette/savedPalettes.ts` owns the JSON format.
 
 ## Principles
 
@@ -170,11 +173,11 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | 2026-10-28 | Own readers for `.xlsx`, `.xls` (BIFF8) and CSV; no spreadsheet library          | Real palette sheets are often legacy `.xls`, even named `.xlsx`. npm's SheetJS build is stale and flagged.  |
 | 2026-10-28 | `.xlsx` inflates with the browser's `DecompressionStream`, capped at 16 MB/part  | No zip dependency. Output is counted while streaming, so a lying size field can't zip-bomb the tab.         |
-| 2026-10-28 | Palette import adds to the palette (skipping same name + color); Clear confirms  | Painters own several paint ranges and want them side by side. Importing never loses colors.                 |
+| 2026-10-28 | Each imported file becomes its own palette; a list picks the one in use          | Painters own several paint ranges and switch between them. An import never changes existing palettes.       |
+| 2026-10-28 | Palettes are saved in `localStorage` as versioned JSON, after every change       | Survives visits with no server. Damaged entries are dropped one by one; a failed save shows a warning.      |
 | 2026-10-28 | Palette export is `.xlsx` with Name/Value/Type, uncompressed, fixed timestamp    | CSV opens as one column in Excel locales that use `;`. Same headings as the sample sheets; re-imports.      |
 | 2026-10-28 | A palette color is name + hex + optional group (the Type column)                 | Other columns (ids, links, recipe columns) are ignored. Revisit recipes once shade/highlight are tinted.    |
 | 2026-10-28 | Undo covers region colors only, resets on a new drawing; color picks are 1 step  | Palette edits are not painting. The picker fires `input` per drag, so it previews and commits on `change`.  |
-| 2026-10-28 | Limitation: the palette is not saved between visits                              | Re-import the file. Revisit: keep it in `localStorage`.                                                     |
 | 2026-10-27 | `Image` artwork composites with `hard-light`; `overlay` failed a browser check   | Greys multiply or screen paint by their value, so opaque black/white stay exact. Overlay keys off paint.    |
 | 2026-10-27 | Masked `Layer`/`Shade`/`Highlight` groups are legend swatches, not model shading | In every sample each holds one small square. Per-region tones would paint through the mask images instead.  |
 | 2026-10-27 | SVG regions: each `selectionMap` child group, else each filled top-level element | Sheets mark paint zones with invisible hit groups. Other SVGs still load. Nothing filled → a clear error.   |

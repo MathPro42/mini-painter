@@ -4,7 +4,13 @@ import xlsxFixture from '../spreadsheet/fixtures/palette.xlsx?inline';
 import { readSpreadsheet } from '../spreadsheet/readSpreadsheet';
 import { MAX_PALETTE_COLORS } from './paletteColor';
 import type { PaletteColor } from './paletteColor';
-import { paletteFromRows, paletteToRows, readPaletteFile, writePaletteFile } from './paletteFile';
+import {
+  paletteFileName,
+  paletteFromRows,
+  paletteToRows,
+  readPaletteFile,
+  writePaletteFile,
+} from './paletteFile';
 
 const loadFixture = async (url: string): Promise<Uint8Array> =>
   new Uint8Array(await (await fetch(url)).arrayBuffer());
@@ -141,5 +147,12 @@ describe('paletteToRows', () => {
       ['Name', 'Value'],
       ['ink', '#111111'],
     ]);
+  });
+});
+
+describe('paletteFileName', () => {
+  it('names the export after the palette, replacing characters file systems reject', () => {
+    expect(paletteFileName('base coats')).toBe('base coats.xlsx');
+    expect(paletteFileName('a/b\\c:d*e?f"g<h>i|j')).toBe('a-b-c-d-e-f-g-h-i-j.xlsx');
   });
 });

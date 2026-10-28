@@ -3,7 +3,13 @@ import { act } from 'preact/test-utils';
 import { describe, expect, it } from 'vitest';
 import { createAppState } from '../state/appState';
 import type { AppState } from '../state/appState';
-import { PalettePanel, UNGROUPED_HEADING } from './PalettePanel';
+import {
+  EMPTY_PALETTE_HINT,
+  NO_PALETTE_HINT,
+  NOT_SAVED_WARNING,
+  PalettePanel,
+  UNGROUPED_HEADING,
+} from './PalettePanel';
 
 const DRAWING =
   '<svg viewBox="0 0 10 10"><rect id="left" width="5" height="10" fill="#c8553d"/><rect id="right" x="5" width="5" height="10"/></svg>';
@@ -17,7 +23,9 @@ const COLORS = [
 
 const renderPanel = ({ colors = COLORS, drawing = true } = {}): AppState => {
   const state = createAppState();
-  state.addPaletteColors(colors);
+  if (colors.length > 0) {
+    state.addPalette('base coats', colors);
+  }
   if (drawing) {
     state.loadSvg(DRAWING);
   }
@@ -28,16 +36,53 @@ const renderPanel = ({ colors = COLORS, drawing = true } = {}): AppState => {
 const paintButton = (name: string): HTMLElement => screen.getByRole('button', { name });
 
 describe('PalettePanel', () => {
-  it('invites an import while the palette is empty', () => {
+  it('invites an import while there are no palettes', () => {
     renderPanel({ colors: [] });
-    expect(screen.getByRole('heading', { name: 'Palette 0' })).toBeInTheDocument();
-    expect(screen.getByText(/Import a palette spreadsheet/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Palettes 0' })).toBeInTheDocument();
+    expect(screen.getByText(NO_PALETTE_HINT)).toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  });
+
+  it('says when the palette in use is empty', async () => {
+    const state = renderPanel();
+    await act(() => {
+      state.addPalette('washes', []);
+    });
+    expect(screen.getByRole('heading', { name: 'Palettes 2' })).toBeInTheDocument();
+    expect(screen.getByText(EMPTY_PALETTE_HINT)).toBeInTheDocument();
+  });
+
+  it('shows the colors of the palette in use only', async () => {
+    const state = renderPanel();
+    await act(() => {
+      state.addPalette('washes', [{ name: 'umber wash', color: '#5c4033' }]);
+    });
+    expect(screen.getByRole('button', { name: 'umber wash' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'brick red' })).not.toBeInTheDocument();
+
+    await act(() => {
+      state.selectPalette(state.palettes.value[0]?.id ?? '');
+    });
+    expect(screen.getByRole('button', { name: 'brick red' })).toBeInTheDocument();
+  });
+
+  it('warns when palettes will not be kept between visits', () => {
+    renderPanel();
+    expect(screen.getByRole('note')).toHaveTextContent(NOT_SAVED_WARNING);
+  });
+
+  it('does not warn when palettes are saved', () => {
+    const state = createAppState({
+      storage: { getItem: () => null, setItem: () => undefined },
+    });
+    state.addPalette('base coats', COLORS);
+    render(<PalettePanel state={state} />);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
   });
 
   it('lists colors under their groups, with ungrouped ones last', () => {
     renderPanel();
-    expect(screen.getByRole('heading', { name: 'Palette 4' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Palettes 1' })).toBeInTheDocument();
     const headings = screen.getAllByRole('heading', { level: 3 });
     expect(headings.map((heading) => heading.textContent)).toEqual([
       'base',
@@ -94,7 +139,7 @@ describe('PalettePanel', () => {
   it('removes a color', () => {
     const state = renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'Remove ink' }));
-    expect(state.palette.value.map((color) => color.name)).toEqual([
+    expect(state.activePalette.value?.colors.map((color) => color.name)).toEqual([
       'brick red',
       'sea green',
       'rust wash',

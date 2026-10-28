@@ -19,14 +19,16 @@ describe('PaletteAddForm', () => {
     fireEvent.input(nameInput(), { target: { value: ' sea green ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
 
-    expect(state.palette.value).toEqual([{ name: 'sea green', color: '#2e8b57' }]);
+    expect(state.activePalette.value?.colors).toEqual([{ name: 'sea green', color: '#2e8b57' }]);
     expect(nameInput()).toHaveValue('');
   });
 
   it('names the color by its hex value when no name is given', () => {
     const state = renderForm();
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-    expect(state.palette.value).toEqual([{ name: NEW_COLOR_START, color: NEW_COLOR_START }]);
+    expect(state.activePalette.value?.colors).toEqual([
+      { name: NEW_COLOR_START, color: NEW_COLOR_START },
+    ]);
   });
 
   it('says when the color is already in the palette, until the name changes', () => {
@@ -38,7 +40,7 @@ describe('PaletteAddForm', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('That color is already in the palette.');
     expect(nameInput()).toHaveValue('brick');
-    expect(state.palette.value).toHaveLength(1);
+    expect(state.activePalette.value?.colors).toHaveLength(1);
 
     fireEvent.input(nameInput(), { target: { value: 'brick 2' } });
     expect(screen.queryByRole('status')).not.toBeInTheDocument();

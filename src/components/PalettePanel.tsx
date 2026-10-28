@@ -5,7 +5,7 @@ import type { PaletteColor } from '../utils/palette/paletteColor';
 import { filterPalette, groupPalette } from '../utils/palette/paletteList';
 import type { SvgRegion } from '../utils/svg/types';
 import { PaletteAddForm } from './PaletteAddForm';
-import { PaletteFileControls } from './PaletteFileControls';
+import { PaletteControls } from './PaletteControls';
 import { useSignalValue } from './useSignalValue';
 
 interface PalettePanelProps {
@@ -14,34 +14,45 @@ interface PalettePanelProps {
 
 /** Heading for colors without a group, shown when other colors have one. */
 export const UNGROUPED_HEADING = 'Other';
+export const NO_PALETTE_HINT =
+  'Import a palette spreadsheet (.xlsx, .xls or .csv) or add colors below.';
+export const EMPTY_PALETTE_HINT = 'This palette is empty. Add colors below.';
+export const NOT_SAVED_WARNING =
+  'This browser is not keeping your palettes, so they will be gone when you leave.';
 
 /**
- * The user's palette: import, export and add colors, filter them by name,
- * and click one to paint the selected region with it.
+ * The user's palettes: choose, import, export and delete them, filter the
+ * one in use by name, add colors, and click one to paint the selected region.
  */
 export function PalettePanel({ state }: PalettePanelProps): JSX.Element {
-  const palette = useSignalValue(state.palette);
+  const palettes = useSignalValue(state.palettes);
+  const active = useSignalValue(state.activePalette);
+  const saved = useSignalValue(state.palettesSaved);
   const svg = useSignalValue(state.svg);
   const selectedId = useSignalValue(state.selectedRegionId);
   const regionColors = useSignalValue(state.regionColors);
   const region = svg?.regions.find((candidate) => candidate.id === selectedId) ?? null;
+  const regionColor = region === null ? null : (regionColors.get(region.id) ?? region.fill);
 
   return (
     <aside class="panel panel--start" aria-labelledby="palette-panel-title">
       <h2 id="palette-panel-title" class="panel__title">
-        Palette <span class="panel__count">{palette.length}</span>
+        Palettes <span class="panel__count">{palettes.length}</span>
       </h2>
-      <PaletteFileControls state={state} />
-      {palette.length === 0 ? (
-        <p class="panel__hint">
-          Import a palette spreadsheet (.xlsx, .xls or .csv) or add colors below.
+      <PaletteControls state={state} />
+      {!saved && palettes.length > 0 && (
+        <p class="panel__hint is-warning" role="note">
+          {NOT_SAVED_WARNING}
         </p>
+      )}
+      {active === null || active.colors.length === 0 ? (
+        <p class="panel__hint">{active === null ? NO_PALETTE_HINT : EMPTY_PALETTE_HINT}</p>
       ) : (
         <PaletteBrowser
           state={state}
-          palette={palette}
+          palette={active.colors}
           region={region}
-          regionColor={region === null ? null : (regionColors.get(region.id) ?? region.fill)}
+          regionColor={regionColor}
         />
       )}
       <PaletteAddForm state={state} />
