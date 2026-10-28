@@ -75,6 +75,28 @@ describe('RegionPanel', () => {
     expect(colorInput()).toHaveValue('#2e8b57');
   });
 
+  it('records one undo step per pick, when the picker closes', () => {
+    const state = renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'left' }));
+    fireEvent.input(colorInput(), { target: { value: '#aaaaaa' } });
+    fireEvent.input(colorInput(), { target: { value: '#2e8b57' } });
+    expect(state.canUndo.value).toBe(false);
+
+    fireEvent.change(colorInput(), { target: { value: '#2e8b57' } });
+    expect(state.canUndo.value).toBe(true);
+    state.undo();
+    expect(state.regionColors.value.size).toBe(0);
+  });
+
+  it('names the palette color each region is painted with', async () => {
+    const state = renderPanel();
+    await act(() => {
+      state.addPaletteColors([{ name: 'brick red', color: '#c8553d' }]);
+    });
+    expect(screen.getByRole('button', { name: 'left brick red' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'right' })).toBeInTheDocument();
+  });
+
   it('marks unpainted regions and offers a neutral starting color', () => {
     renderPanel(UNPAINTED);
     const button = screen.getByRole('button', { name: 'cap' });

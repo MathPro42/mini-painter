@@ -9,17 +9,19 @@ vi.mock('../rendering/createRenderer', () => ({
 }));
 
 describe('App', () => {
-  it('renders the title, the upload control and the 3D viewport', () => {
+  it('renders the title, the controls, the palette and the 3D viewport', () => {
     render(<App state={createAppState()} />);
     expect(screen.getByRole('heading', { level: 1, name: 'Mini Painter' })).toBeInTheDocument();
     expect(screen.getByLabelText('Open SVG…')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Painting history' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: /Palette/ })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '3D model preview' })).toBeInTheDocument();
   });
 
   it('shows the region panel once a drawing is loaded', async () => {
     const state = createAppState();
     render(<App state={state} />);
-    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: /Regions/ })).not.toBeInTheDocument();
 
     await act(() => {
       state.loadSvg('<svg viewBox="0 0 4 4"><rect id="block" width="4" height="4"/></svg>');

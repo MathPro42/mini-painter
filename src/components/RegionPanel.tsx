@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import type { AppState } from '../state/appState';
+import { paletteNamesByColor } from '../utils/palette/paletteList';
 import type { SvgRegion } from '../utils/svg/types';
 import { useSignalValue } from './useSignalValue';
 
@@ -12,16 +13,23 @@ export const UNPAINTED_INPUT_COLOR = '#808080';
 
 /**
  * Lists the drawing's regions and paints the selected one. Selecting here
- * and clicking the drawing in the viewport share the same state.
+ * and clicking the drawing in the viewport share the same state. A region
+ * painted with a palette color shows that color's name.
  */
 export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
   const svg = useSignalValue(state.svg);
   const colors = useSignalValue(state.regionColors);
   const selectedId = useSignalValue(state.selectedRegionId);
+  const palette = useSignalValue(state.palette);
   if (svg === null) {
     return null;
   }
   const colorOf = (region: SvgRegion): string | null => colors.get(region.id) ?? region.fill;
+  const paintNames = paletteNamesByColor(palette);
+  const paintOf = (region: SvgRegion): string | undefined => {
+    const color = colorOf(region);
+    return color === null ? undefined : paintNames.get(color);
+  };
   const selected = svg.regions.find((region) => region.id === selectedId) ?? null;
 
   return (
@@ -46,7 +54,16 @@ export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
                 style={{ backgroundColor: colorOf(region) ?? 'transparent' }}
                 aria-hidden="true"
               />
-              <span class="region-list__name">{region.name}</span>
+              <span class="region-list__text">
+                <span class="region-list__name">{region.name}</span>
+                {paintOf(region) !== undefined && (
+                  // The space keeps screen readers from running the two names together.
+                  <>
+                    {' '}
+                    <span class="region-list__paint">{paintOf(region)}</span>
+                  </>
+                )}
+              </span>
             </button>
           </li>
         ))}
@@ -70,7 +87,13 @@ function ColorField({ state, region, color }: ColorFieldProps): JSX.Element {
         class="color-field__input"
         value={color ?? UNPAINTED_INPUT_COLOR}
         disabled={region === null}
+        // While the picker is open, colors only preview; closing it records one undo step.
         onInput={(event) => {
+          if (region !== null) {
+            state.previewRegionColor(region.id, event.currentTarget.value);
+          }
+        }}
+        onChange={(event) => {
           if (region !== null) {
             state.setRegionColor(region.id, event.currentTarget.value);
           }

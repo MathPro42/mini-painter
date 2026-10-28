@@ -55,6 +55,20 @@ body,
   font-weight: 600;
 }
 
+.app__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem 1rem;
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.375rem;
+}
+
 .app__body {
   display: flex;
   flex: 1;
@@ -96,17 +110,24 @@ body,
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: var(--color-hover);
+  color: inherit;
+  font: inherit;
   font-size: 0.875rem;
   cursor: pointer;
 }
 
-.button:hover {
+.button:hover:not(:disabled) {
   background: var(--color-selected);
 }
 
 .button:focus-within {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .upload {
@@ -144,9 +165,21 @@ body,
   font-weight: 600;
 }
 
+.panel--start {
+  order: -1;
+  border-right: 1px solid var(--color-border);
+  border-left: 0;
+}
+
 .panel__count {
   color: var(--color-muted);
   font-weight: 400;
+}
+
+.panel__hint {
+  margin: 0 1rem 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
 }
 
 .color-field {
@@ -213,10 +246,169 @@ body,
   outline-offset: -2px;
 }
 
-.region-list__name {
+.region-list__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.region-list__name,
+.region-list__paint,
+.palette-item__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.region-list__paint {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.palette-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0 0.5rem 0.75rem;
+}
+
+.palette-actions__message,
+.palette-add__message {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.palette-actions__message.is-error {
+  color: var(--color-error);
+}
+
+.palette-filter,
+.palette-add__name {
+  min-width: 0;
+  padding: 0.3125rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.palette-filter {
+  margin: 0 0.5rem 0.5rem;
+}
+
+.palette-filter:focus-visible,
+.palette-add__name:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.palette-list {
+  flex: 1;
+  min-height: 0;
+  padding: 0 0.5rem 0.5rem;
+  overflow-y: auto;
+}
+
+.palette-group__title {
+  margin: 0.5rem 0.5rem 0.25rem;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.palette-group__colors {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.palette-item:hover {
+  background: var(--color-hover);
+}
+
+.palette-item__paint {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.3125rem 0.5rem;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.palette-item__paint:disabled {
+  cursor: default;
+}
+
+.palette-item__paint[aria-current='true'] {
+  background: var(--color-selected);
+}
+
+.palette-item__remove {
+  flex: none;
+  width: 1.75rem;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-muted);
+  font-size: 1rem;
+  line-height: 1.75rem;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.palette-item:hover .palette-item__remove,
+.palette-item__remove:focus-visible {
+  opacity: 1;
+}
+
+.palette-item__remove:hover {
+  color: var(--color-error);
+}
+
+/* Without hover there is no other way to reveal the remove buttons. */
+@media (hover: none) {
+  .palette-item__remove {
+    opacity: 1;
+  }
+}
+
+.palette-item__paint:focus-visible,
+.palette-item__remove:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.palette-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.palette-add__name {
+  flex: 1;
 }
 
 .swatch {
@@ -237,10 +429,25 @@ body,
     flex-direction: column;
   }
 
+  /* The drawing comes first; the panels share what is left below it. */
+  .viewport {
+    order: -2;
+    min-height: 40%;
+  }
+
+  /* Too short for a scrolling list under fixed controls: the whole panel scrolls instead. */
   .panel {
     width: auto;
-    max-height: 40%;
+    max-height: 30%;
+    overflow-y: auto;
     border-top: 1px solid var(--color-border);
+    border-right: 0;
     border-left: 0;
+  }
+
+  .palette-list,
+  .region-list {
+    flex: none;
+    overflow-y: visible;
   }
 }
