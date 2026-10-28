@@ -33,6 +33,40 @@ describe('normalizePaletteColor', () => {
     expect(name).toHaveLength(MAX_PALETTE_TEXT_LENGTH);
   });
 
+  it('keeps a see-through opacity and drops other values', () => {
+    expect(normalizePaletteColor({ name: 'wash', color: '#5c4033', opacity: 0.6 })).toEqual({
+      name: 'wash',
+      color: '#5c4033',
+      opacity: 0.6,
+    });
+    for (const opacity of [1, 0, '0.5', null]) {
+      expect(normalizePaletteColor({ name: 'ink', color: '#111', opacity })).toEqual({
+        name: 'ink',
+        color: '#111111',
+      });
+    }
+  });
+
+  it('keeps recipe entries that can be color keys, dropping others and self references', () => {
+    const recipe = {
+      layer: 'coral #e07a5f',
+      shade: 'brick red #c8553d',
+      highlight: 'x'.repeat(200),
+      base: 'ink #111111',
+    };
+    expect(normalizePaletteColor({ name: 'Brick red', color: '#c8553d', recipe })).toEqual({
+      name: 'Brick red',
+      color: '#c8553d',
+      recipe: { layer: 'coral #e07a5f' },
+    });
+    for (const unusable of ['coral', null, { layer: 5 }, { shade: '' }]) {
+      expect(normalizePaletteColor({ name: 'ink', color: '#111', recipe: unusable })).toEqual({
+        name: 'ink',
+        color: '#111111',
+      });
+    }
+  });
+
   it('returns null for a blank name or a color that is not hex', () => {
     expect(normalizePaletteColor({ name: ' \u0001 ', color: '#000' })).toBeNull();
     expect(normalizePaletteColor({ name: 'red', color: 'red' })).toBeNull();

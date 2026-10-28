@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { PaletteColor } from '../palette/paletteColor';
 import {
   isMetallicPaint,
+  isWash,
   PAINT_STEPS,
   parseStepPaint,
-  randomBasePaints,
   sameRegionPaint,
   sameRegionPaints,
   sameStepPaint,
@@ -14,12 +14,6 @@ import {
 
 const BRICK = { color: '#c8553d', name: 'brick red' };
 const INK = { color: '#111111' };
-
-/** Returns the given values in turn, like a seeded Math.random. */
-const sequence = (...values: number[]): (() => number) => {
-  let index = 0;
-  return () => values[index++ % values.length] ?? 0;
-};
 
 describe('PAINT_STEPS', () => {
   it('lists the steps in painting order', () => {
@@ -46,8 +40,25 @@ describe('parseStepPaint', () => {
     expect(parseStepPaint({ color: '#111', name: ' ', metallic: false })).toEqual(INK);
   });
 
+  it('keeps a see-through opacity and drops one that is opaque or invisible', () => {
+    expect(parseStepPaint({ color: '#5c4033', opacity: 0.6 })).toEqual({
+      color: '#5c4033',
+      opacity: 0.6,
+    });
+    for (const opacity of [1, 0, -0.5, 2, Number.NaN]) {
+      expect(parseStepPaint({ color: '#111111', opacity })).toEqual(INK);
+    }
+  });
+
   it('throws a RangeError for an invalid color', () => {
     expect(() => parseStepPaint({ color: 'brick' })).toThrow(RangeError);
+  });
+});
+
+describe('isWash', () => {
+  it('is true for see-through paints only', () => {
+    expect(isWash(BRICK)).toBe(false);
+    expect(isWash({ color: '#5c4033', opacity: 0.6 })).toBe(true);
   });
 });
 
@@ -67,16 +78,26 @@ describe('stepPaintFromPalette and isMetallicPaint', () => {
       name: 'ink',
     });
   });
+
+  it('carry the opacity of a wash', () => {
+    const wash: PaletteColor = { name: 'umber wash', color: '#5c4033', opacity: 0.6 };
+    expect(stepPaintFromPalette(wash)).toEqual({
+      color: '#5c4033',
+      name: 'umber wash',
+      opacity: 0.6,
+    });
+  });
 });
 
 describe('sameStepPaint, sameRegionPaint and sameRegionPaints', () => {
-  it('compare color, name and the metallic flag', () => {
+  it('compare color, name, the metallic flag and the opacity', () => {
     expect(sameStepPaint(BRICK, { ...BRICK })).toBe(true);
     expect(sameStepPaint(undefined, undefined)).toBe(true);
     expect(sameStepPaint(BRICK, undefined)).toBe(false);
     expect(sameStepPaint(BRICK, { ...BRICK, name: 'clay' })).toBe(false);
     expect(sameStepPaint(INK, { ...INK, metallic: false })).toBe(true);
     expect(sameStepPaint(INK, { ...INK, metallic: true })).toBe(false);
+    expect(sameStepPaint(INK, { ...INK, opacity: 0.6 })).toBe(false);
   });
 
   it('compare every step of every region', () => {
@@ -87,32 +108,5 @@ describe('sameStepPaint, sameRegionPaint and sameRegionPaints', () => {
     expect(sameRegionPaints(a, new Map([['region-0', { base: { ...BRICK } }]]))).toBe(true);
     expect(sameRegionPaints(a, new Map())).toBe(false);
     expect(sameRegionPaints(new Map([['region-1', {}]]), new Map())).toBe(true);
-  });
-});
-
-describe('randomBasePaints', () => {
-  const palette: PaletteColor[] = [
-    { name: 'brick red', color: '#c8553d', group: 'Base' },
-    { name: 'umber wash', color: '#5c4033', group: 'Shade' },
-    { name: 'steel', color: '#8a8a8a', group: 'Metallic' },
-  ];
-
-  it('gives each region a paint picked by the random source, skipping washes', () => {
-    const picks = randomBasePaints(['a', 'b', 'c'], palette, sequence(0, 0.6, 0.99));
-    expect([...picks]).toEqual([
-      ['a', { color: '#c8553d', name: 'brick red' }],
-      ['b', { color: '#8a8a8a', name: 'steel', metallic: true }],
-      ['c', { color: '#8a8a8a', name: 'steel', metallic: true }],
-    ]);
-  });
-
-  it('uses washes when the palette has nothing else', () => {
-    const washes = palette.filter((color) => color.group === 'Shade');
-    expect(randomBasePaints(['a'], washes, sequence(0)).get('a')?.name).toBe('umber wash');
-  });
-
-  it('stays in range even if the random source returns 1, and is empty without colors', () => {
-    expect(randomBasePaints(['a'], palette, sequence(1)).get('a')?.name).toBe('steel');
-    expect(randomBasePaints(['a'], [], sequence(0.5)).size).toBe(0);
   });
 });

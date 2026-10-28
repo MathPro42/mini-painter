@@ -3,6 +3,7 @@ import type { AppState } from '../state/appState';
 import { PAINT_STEP_LABELS, PAINT_STEPS, TONE_STEPS } from '../utils/paint/regionPaint';
 import type { PaintStep, RegionPaint, StepPaint } from '../utils/paint/regionPaint';
 import type { ParsedSvg, SvgRegion } from '../utils/svg/types';
+import { swatchProps } from './swatchProps';
 import { useSignalValue } from './useSignalValue';
 
 interface PaintStepPickerProps {
@@ -17,6 +18,8 @@ export const UNPAINTED_INPUT_COLOR = '#808080';
 /** Shown instead of a paint name for steps the drawing has no layer for. */
 export const UNAVAILABLE_STEP_TEXT = 'not in this drawing';
 
+export const RECIPE_TOGGLE_LABEL = "Fill Layer, Shade and Highlight from the paint's recipe";
+
 /**
  * The selected region's four paint steps and a color picker for the step
  * being painted. Choosing a step also decides what a palette pick paints.
@@ -30,6 +33,8 @@ export function PaintStepPicker({ state, region }: PaintStepPickerProps): JSX.El
   const paint = region === null ? undefined : paints.get(region.id);
   const step = isAvailable(svg, activeStep) ? activeStep : 'base';
   const showSteps = region !== null && TONE_STEPS.some((tone) => isAvailable(svg, tone));
+  const palette = useSignalValue(state.activePalette);
+  const hasRecipes = palette?.colors.some((color) => color.recipe !== undefined) ?? false;
 
   return (
     <div class="paint-steps">
@@ -48,8 +53,26 @@ export function PaintStepPicker({ state, region }: PaintStepPickerProps): JSX.El
           ))}
         </div>
       )}
+      {showSteps && hasRecipes && <RecipeToggle state={state} />}
       <ColorField state={state} region={region} step={step} paint={paint} />
     </div>
+  );
+}
+
+/** Whether Base picks and Randomize also paint the tones each paint's recipe names. */
+function RecipeToggle({ state }: { state: AppState }): JSX.Element {
+  const useRecipes = useSignalValue(state.useRecipes);
+  return (
+    <label class="paint-steps__recipes">
+      <input
+        type="checkbox"
+        checked={useRecipes}
+        onChange={(event) => {
+          state.setUseRecipes(event.currentTarget.checked);
+        }}
+      />{' '}
+      {RECIPE_TOGGLE_LABEL}
+    </label>
   );
 }
 
@@ -81,11 +104,7 @@ function StepRow({ state, region, step, paint, isActive, isAvailable }: StepRowP
         }}
       >
         <span class="paint-step__label">{label}</span>{' '}
-        <span
-          class={stepPaint === undefined ? 'swatch swatch--empty' : 'swatch'}
-          style={{ backgroundColor: stepPaint?.color ?? 'transparent' }}
-          aria-hidden="true"
-        />
+        <span {...swatchProps(stepPaint)} aria-hidden="true" />
         <span class="paint-step__paint">{stepText(stepPaint, isAvailable)}</span>
       </button>
       {stepPaint !== undefined && (

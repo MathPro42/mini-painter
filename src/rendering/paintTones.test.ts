@@ -5,6 +5,7 @@ import { recordingContext } from '../test/recordingCanvas';
 import type { CanvasFrame } from './canvasPaths';
 import {
   METAL_BLEND,
+  WASH_BLEND,
   NO_TONE_MASK_IMAGES,
   paintMetal,
   paintShading,
@@ -14,12 +15,14 @@ import type { ToneInput } from './paintTones';
 
 const ABOVE = {} as HTMLImageElement;
 const LAYER = {} as HTMLImageElement;
+const SHADE = {} as HTMLImageElement;
 const HIGHLIGHT = {} as HTMLImageElement;
 const METAL = {} as HTMLImageElement;
 const SCRATCH_CANVAS = {} as HTMLCanvasElement;
 const IMAGE_NAMES = new Map<unknown, string>([
   [ABOVE, 'above'],
   [LAYER, 'layer mask'],
+  [SHADE, 'shade mask'],
   [HIGHLIGHT, 'highlight mask'],
   [METAL, 'metal'],
   [SCRATCH_CANVAS, 'scratch'],
@@ -34,6 +37,7 @@ const FRAME: CanvasFrame = { width: 200, height: 100, viewBox: SVG.viewBox };
 const GOLD = { color: '#b27f34', name: 'gold', metallic: true } as const;
 const STEEL = { color: '#8a8a8a', name: 'steel', metallic: true } as const;
 const RED = { color: '#c8553d', name: 'red' } as const;
+const WASH = { color: '#5c4033', name: 'umber wash', opacity: 0.6 } as const;
 
 type Pass = typeof paintMetal;
 
@@ -134,6 +138,34 @@ describe('paintTones', () => {
     });
     expect(log).toContain('scratch: fill #8a8a8a nonzero');
     expect(log.some((entry) => entry.includes('metal'))).toBe(false);
+  });
+
+  it('multiplies a wash into the paint under it, after the flat paints', () => {
+    const log = run(
+      paintTones,
+      [
+        ['region-0', { base: RED, shade: WASH }],
+        ['region-1', { shade: RED }],
+      ],
+      { toneMasks: { layer: null, shade: SHADE, highlight: null } },
+    );
+    expect(log).toEqual([
+      'scratch: composite source-over',
+      'scratch: fill #c8553d nonzero',
+      'scratch: fill #c8553d evenodd',
+      'scratch: composite destination-in',
+      'scratch: image shade mask',
+      'scratch: composite source-over',
+      'image scratch',
+      'scratch: composite source-over',
+      'scratch: fill #5c4033 nonzero',
+      'scratch: composite destination-in',
+      'scratch: image shade mask',
+      'scratch: composite source-over',
+      `composite ${WASH_BLEND}`,
+      'image scratch',
+      'composite source-over',
+    ]);
   });
 
   it('skips steps without a mask', () => {

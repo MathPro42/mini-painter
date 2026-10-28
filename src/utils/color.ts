@@ -65,7 +65,7 @@ const NAMED_COLORS: ReadonlyMap<string, string> = new Map([
 
 const CSS_HEX = /^#([0-9a-f]+)$/;
 const CSS_RGB =
-  /^rgba?\(\s*([\d.]+%?)[\s,]+([\d.]+%?)[\s,]+([\d.]+%?)(?:\s*[,/]\s*[\d.]+%?)?\s*\)$/;
+  /^rgba?\(\s*([\d.]+%?)[\s,]+([\d.]+%?)[\s,]+([\d.]+%?)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/;
 
 /**
  * Normalizes the CSS color forms SVG files use for fills to lowercase
@@ -85,6 +85,55 @@ export function normalizeCssColor(value: string): string | null {
   }
   const rgb = CSS_RGB.exec(color);
   return rgb === null ? null : rgbToHex(rgb.slice(1, 4));
+}
+
+/**
+ * The alpha a CSS color states (`rgba(…, .6)`, `rgb(… / 60%)`, `#rrggbbaa`,
+ * `#rgba`), from 0 to 1. Returns `null` when it states none, or when
+ * normalizeCssColor would not read it.
+ */
+export function cssColorAlpha(value: string): number | null {
+  const color = value.trim().toLowerCase();
+  if (normalizeCssColor(color) === null) {
+    return null;
+  }
+  const hex = CSS_HEX.exec(color)?.[1];
+  if (hex !== undefined) {
+    const digits = hex.length === 4 ? hex.slice(3).repeat(2) : hex.slice(6);
+    return digits.length === 2 ? Number.parseInt(digits, 16) / 255 : null;
+  }
+  const alpha = CSS_RGB.exec(color)?.[4];
+  if (alpha === undefined) {
+    return null;
+  }
+  const amount = Number.parseFloat(alpha) / (alpha.endsWith('%') ? 100 : 1);
+  return Number.isNaN(amount) ? null : Math.min(1, Math.max(0, amount));
+}
+
+/**
+ * A see-through paint's opacity: `value` rounded to 3 decimals when it is
+ * strictly between 0 and 1. Returns `null` for opaque (1 or more), invisible
+ * (0 or less) and non-numbers, so only real see-through paints carry one.
+ */
+export function normalizeOpacity(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  const rounded = Math.round(value * 1000) / 1000;
+  return rounded > 0 && rounded < 1 ? rounded : null;
+}
+
+/** `#rrggbb` plus an opacity as `#rrggbbaa`, the form canvas fill styles accept. */
+export function hexWithAlpha(hex: string, opacity: number): string {
+  const alpha = Math.round(Math.min(1, Math.max(0, opacity)) * 255);
+  return parseHexColor(hex) + alpha.toString(16).padStart(2, '0');
+}
+
+/** `#rrggbb` plus an opacity as `rgba(r, g, b, a)`, the form palette spreadsheets use. */
+export function rgbaText(hex: string, opacity: number): string {
+  const value = hexColorToInt(hex);
+  const channels = [value >> 16, (value >> 8) & 0xff, value & 0xff].map(String);
+  return `rgba(${channels.join(', ')}, ${String(opacity)})`;
 }
 
 function hexWithoutAlpha(digits: string): string | null {

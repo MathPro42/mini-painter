@@ -1,13 +1,17 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import type { AppState } from '../state/appState';
-import { PAINT_STEP_LABELS, stepPaintFromPalette } from '../utils/paint/regionPaint';
+import { rgbaText } from '../utils/color';
+import { createRecipeBook } from '../utils/paint/recipePaint';
+import type { RecipeBook } from '../utils/paint/recipePaint';
+import { PAINT_STEP_LABELS, stepPaintFromPalette, TONE_STEPS } from '../utils/paint/regionPaint';
 import type { PaintStep, RegionPaint, StepPaint } from '../utils/paint/regionPaint';
 import type { PaletteColor } from '../utils/palette/paletteColor';
 import { filterPalette, groupPalette } from '../utils/palette/paletteList';
 import type { SvgRegion } from '../utils/svg/types';
 import { PaletteAddForm } from './PaletteAddForm';
 import { PaletteControls } from './PaletteControls';
+import { swatchProps } from './swatchProps';
 import { useSignalValue } from './useSignalValue';
 
 interface PalettePanelProps {
@@ -107,6 +111,8 @@ function PaletteBrowser({
   current,
 }: PaletteBrowserProps): JSX.Element {
   const [query, setQuery] = useState('');
+  const useRecipes = useSignalValue(state.useRecipes);
+  const book = useMemo(() => createRecipeBook(palette), [palette]);
   const visible = filterPalette(palette, query);
   const groups = groupPalette(visible);
   const showHeadings = groups.some((group) => group.group !== null);
@@ -140,6 +146,8 @@ function PaletteBrowser({
                   color={color}
                   region={region}
                   step={step}
+                  book={book}
+                  useRecipes={useRecipes}
                   isCurrent={isCurrentColor(color, current)}
                 />
               ))}
@@ -157,26 +165,37 @@ interface PaletteItemProps {
   color: PaletteColor;
   region: SvgRegion | null;
   step: PaintStep;
+  /** Follows the palette's recipes. */
+  book: RecipeBook;
+  /** Whether a Base pick also paints the tones of the color's recipe. */
+  useRecipes: boolean;
   /** Whether the selected region's step already has this paint. */
   isCurrent: boolean;
 }
 
-function PaletteItem({ state, color, region, step, isCurrent }: PaletteItemProps): JSX.Element {
+function PaletteItem(props: PaletteItemProps): JSX.Element {
+  const { state, color, region, step, book, isCurrent } = props;
   return (
     <li class="palette-item">
       <button
         type="button"
         class="palette-item__paint"
-        title={color.color}
+        title={colorTitle(color, book)}
         disabled={region === null}
         aria-current={isCurrent}
         onClick={() => {
-          if (region !== null) {
+          if (region === null) {
+            return;
+          }
+          // A recipe replaces the whole region, so tones from an earlier Base don't linger.
+          if (step === 'base' && props.useRecipes && color.recipe !== undefined) {
+            state.setRegionPaint(region.id, book(color));
+          } else {
             state.setRegionStep(region.id, step, stepPaintFromPalette(color));
           }
         }}
       >
-        <span class="swatch" style={{ backgroundColor: color.color }} aria-hidden="true" />
+        <span {...swatchProps(color)} aria-hidden="true" />
         <span class="palette-item__name">{color.name}</span>
       </button>
       <button
@@ -192,4 +211,15 @@ function PaletteItem({ state, color, region, step, isCurrent }: PaletteItemProps
       </button>
     </li>
   );
+}
+
+/** A color's tooltip: its value (with alpha for washes), then the tones of its recipe. */
+function colorTitle(color: PaletteColor, book: RecipeBook): string {
+  const value = color.opacity === undefined ? color.color : rgbaText(color.color, color.opacity);
+  const paint = color.recipe === undefined ? {} : book(color);
+  const tones = TONE_STEPS.flatMap((tone) => {
+    const name = paint[tone]?.name;
+    return name === undefined ? [] : [`${PAINT_STEP_LABELS[tone]}: ${name}`];
+  });
+  return [value, ...tones].join('\n');
 }

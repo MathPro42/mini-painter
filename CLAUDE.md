@@ -94,8 +94,9 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   and for paint-scheme sheets the tone masks and metal picture from `utils/svg/toneMasks.ts`).
   `rendering/svgLayer.ts` follows `svg`, `regionPaints` and `selectedRegionId` and repaints
   the plane's canvas texture: `paintSvg.ts` draws the base coats, then `paintTones.ts` the
-  metal and the Layer/Shade/Highlight tones on a scratch canvas, then the shading artwork. Clicks go UI → rendering → state: `Viewport`
-  calls `handle.pickRegion(x, y)`, then `state.selectRegion()`. Rendering never writes state.
+  metal and the Layer/Shade/Highlight tones on a scratch canvas (washes multiplied in), then
+  the shading artwork. Clicks go UI → rendering → state: `Viewport` calls
+  `handle.pickRegion(x, y)`, then `state.selectRegion()`. Rendering never writes state.
 - Components read signals with `components/useSignalValue.ts`, which re-renders on change.
 - `AppState` is composed from `state/paintState.ts` (drawing, per-region paints for the four
   steps in `utils/paint/regionPaint.ts`, the active step, undo history) and
@@ -104,9 +105,11 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   a step (the color picker previews on `input` and commits on `change`). `loadSvg` clears the
   history and goes back to the Base step.
 - Palette files: `utils/palette/paletteFile.ts` turns the first sheet into colors (header
-  detection, `rgb()`/hex parsing) and writes exports. `utils/spreadsheet/readSpreadsheet.ts`
-  picks the reader by content, not extension: zip → `.xlsx`, compound file → `.xls` (BIFF8),
-  anything else → delimited text. Each reader bounds-checks its input and throws `RangeError`.
+  detection, `rgb()`/hex parsing, `rgba()` alpha marking washes) and writes exports.
+  `utils/palette/paletteRecipe.ts` reads and writes the Id and Layer/Shade/Highlight recipe
+  columns; `utils/paint/recipePaint.ts` turns a recipe into a region's paints.
+  `utils/spreadsheet/readSpreadsheet.ts` picks the reader by content, not extension: zip →
+  `.xlsx`, compound file → `.xls` (BIFF8), anything else → delimited text. Each reader bounds-checks its input and throws `RangeError`.
 - Palettes persist through a `KeyValueStorage` passed to `createAppState({ storage })`.
   `main.tsx` passes `localStorage` (via `state/browserStorage.ts`); tests pass a fake or
   nothing. Every palette change saves; `utils/palette/savedPalettes.ts` owns the JSON format.
@@ -175,18 +178,20 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-10-28 | Recipes: Layer/Shade/Highlight cells resolve at import by Id, else by name       | Stored as color keys, so they survive saves and exports. A Base with a recipe replaces the region's tones.  |
+| 2026-10-28 | Washes (`rgba()` palette colors) multiply the paint under them through the mask  | At their .6 alpha they looked faint. Multiply keeps depth and the paint's hue. Picked by eye over opaque.   |
 | 2026-10-28 | Metal is clipped to each shape in turn, never cut with `destination-in`          | Each `destination-in` draw erases all outside its shape, so regions of several shapes came out empty.       |
 | 2026-10-28 | Four paint steps per region; Layer/Shade/Highlight show through the sheet masks  | How models are painted. Supersedes the 2026-10-27 "legend swatches" and "one flat color per region" rows.   |
 | 2026-10-28 | Tone masks are browser-rendered images: the masked group refilled with white     | Full SVG mask behavior (units, transforms, embedded images) with no pixel reads of 2048 px textures.        |
 | 2026-10-28 | Metallic paints in any step: the sheet's `Met` picture in hard light, no shading | Sheets hide a bare-metal picture for this. Hard light picked by eye over luminosity and doubled hard light. |
 | 2026-10-28 | A paint is metallic when its palette group mentions "metal"                      | Sample palettes mark metals in their Type column. Colors from the picker are never metallic.                |
-| 2026-10-28 | Randomize: a random Base per region (washes skipped), other steps cleared        | Fast scheme ideas. Random tones on top would clash; one undo brings the previous scheme back.               |
+| 2026-10-28 | Randomize: a random Base per region (washes skipped), plus its recipe's tones    | Fast scheme ideas. Recipe tones suit their Base; with recipes off, other steps are cleared. One undo step.  |
 | 2026-10-28 | Own readers for `.xlsx`, `.xls` (BIFF8) and CSV; no spreadsheet library          | Real palette sheets are often legacy `.xls`, even named `.xlsx`. npm's SheetJS build is stale and flagged.  |
 | 2026-10-28 | `.xlsx` inflates with the browser's `DecompressionStream`, capped at 16 MB/part  | No zip dependency. Output is counted while streaming, so a lying size field can't zip-bomb the tab.         |
 | 2026-10-28 | Each imported file becomes its own palette; a list picks the one in use          | Painters own several paint ranges and switch between them. An import never changes existing palettes.       |
 | 2026-10-28 | Palettes are saved in `localStorage` as versioned JSON, after every change       | Survives visits with no server. Damaged entries are dropped one by one; a failed save shows a warning.      |
 | 2026-10-28 | Palette export is `.xlsx` with Name/Value/Type, uncompressed, fixed timestamp    | CSV opens as one column in Excel locales that use `;`. Same headings as the sample sheets; re-imports.      |
-| 2026-10-28 | A palette color is name + hex + optional group (the Type column)                 | Other columns (ids, links, recipe columns) are ignored. Revisit recipes once shade/highlight are tinted.    |
+| 2026-10-28 | A palette color is name + hex + optional group, opacity and recipe               | Other columns (links, spray flags) are ignored. Opacity and recipes came once the tones were tinted.        |
 | 2026-10-28 | Undo covers region colors only, resets on a new drawing; color picks are 1 step  | Palette edits are not painting. The picker fires `input` per drag, so it previews and commits on `change`.  |
 | 2026-10-27 | `Image` artwork composites with `hard-light`; `overlay` failed a browser check   | Greys multiply or screen paint by their value, so opaque black/white stay exact. Overlay keys off paint.    |
 | 2026-10-27 | Masked `Layer`/`Shade`/`Highlight` groups are legend swatches, not model shading | In every sample each holds one small square. Per-region tones would paint through the mask images instead.  |

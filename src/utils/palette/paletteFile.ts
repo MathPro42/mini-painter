@@ -1,9 +1,11 @@
-import { normalizeCssColor, normalizeHexColor } from '../color';
+import { cssColorAlpha, normalizeCssColor, normalizeHexColor, rgbaText } from '../color';
 import { readSpreadsheet } from '../spreadsheet/readSpreadsheet';
 import type { SheetRows } from '../spreadsheet/sheetRows';
 import { writeXlsx } from '../spreadsheet/xlsxWrite';
 import { MAX_PALETTE_COLORS, normalizePaletteColor } from './paletteColor';
 import type { PaletteColor } from './paletteColor';
+import { findRecipeColumns, recipeColumns, withRecipes } from './paletteRecipe';
+import type { PaletteRowColor } from './paletteRecipe';
 
 /** Palette files are a few kilobytes; anything past this is refused unread. */
 export const MAX_PALETTE_FILE_BYTES = 8 * 1024 * 1024;
@@ -63,8 +65,9 @@ export function writePaletteFile(colors: readonly PaletteColor[]): Uint8Array {
 
 /**
  * Finds the colors in spreadsheet rows. With a heading row (a "Value",
- * "Color", "Hex"… column, plus optional "Name" and "Type"), each row below
- * it is a color. Without one, each row's first hex or rgb() cell is the color
+ * "Color", "Hex"… column, plus optional "Name" and "Type", and "Layer",
+ * "Shade" and "Highlight" recipe columns naming other rows by "Id" or name),
+ * each row below it is a color. An `rgba()` color keeps its alpha. Without one, each row's first hex or rgb() cell is the color
  * and its first other non-blank cell the name. Unnamed colors are named by
  * their hex value.
  */
@@ -80,13 +83,24 @@ export function paletteFromRows(rows: SheetRows): PaletteImport {
   return result;
 }
 
-/** The rows writePaletteFile stores. The Type column is left out when no color has a group. */
+/**
+ * The rows writePaletteFile stores. See-through colors are written as
+ * `rgba()`. The Type column is left out when no color has a group, and the
+ * Id and recipe columns when no color has a recipe.
+ */
 export function paletteToRows(colors: readonly PaletteColor[]): string[][] {
   const withGroups = colors.some((color) => color.group !== undefined);
-  const header = withGroups ? [...PALETTE_HEADERS] : PALETTE_HEADERS.slice(0, 2);
-  const rows = colors.map(({ name, color, group }) =>
-    withGroups ? [name, color, group ?? ''] : [name, color],
-  );
+  const recipes = recipeColumns(colors);
+  const header = [
+    ...(withGroups ? PALETTE_HEADERS : PALETTE_HEADERS.slice(0, 2)),
+    ...recipes.header,
+  ];
+  const rows = colors.map((color, index) => [
+    color.name,
+    color.opacity === undefined ? color.color : rgbaText(color.color, color.opacity),
+    ...(withGroups ? [color.group ?? ''] : []),
+    ...(recipes.rows[index] ?? []),
+  ]);
   return [header, ...rows];
 }
 
@@ -96,29 +110,35 @@ function readLabeled(rows: SheetRows, headerRow: number): PaletteImport {
   const colorColumn = column(COLOR_HEADERS);
   const nameColumn = column(NAME_HEADERS);
   const groupColumn = column(GROUP_HEADERS);
-  return collect(rows.slice(headerRow + 1), (row) => {
+  const { entries, skipped } = collect(rows.slice(headerRow + 1), (row) => {
     const value = row[colorColumn] ?? '';
     const color = normalizeCssColor(value) ?? normalizeHexColor(value);
-    return toPaletteColor(row[nameColumn] ?? '', color, row[groupColumn]);
+    return toPaletteColor(row[nameColumn] ?? '', color, value, row[groupColumn]);
   });
+  const recipes = findRecipeColumns(header);
+  const colors =
+    recipes === null ? entries.map((entry) => entry.color) : withRecipes(entries, recipes);
+  return { colors, skipped };
 }
 
 function readUnlabeled(rows: SheetRows): PaletteImport {
-  return collect(rows, (row) => {
+  const { entries, skipped } = collect(rows, (row) => {
     const colorColumn = row.findIndex(
       (cell) => EXPLICIT_COLOR.test(cell) && normalizeCssColor(cell) !== null,
     );
     const name = row.find((cell, column) => column !== colorColumn && cell.trim() !== '') ?? '';
-    return toPaletteColor(name, normalizeCssColor(row[colorColumn] ?? ''));
+    const value = row[colorColumn] ?? '';
+    return toPaletteColor(name, normalizeCssColor(value), value);
   });
+  return { colors: entries.map((entry) => entry.color), skipped };
 }
 
 /** Maps each non-blank row to a color, counting the rows that give none. */
 function collect(
   rows: SheetRows,
   read: (row: readonly string[]) => PaletteColor | null,
-): PaletteImport {
-  const colors: PaletteColor[] = [];
+): { entries: PaletteRowColor[]; skipped: number } {
+  const entries: PaletteRowColor[] = [];
   let skipped = 0;
   for (const row of rows) {
     if (row.every((cell) => cell.trim() === '')) {
@@ -128,19 +148,26 @@ function collect(
     if (color === null) {
       skipped += 1;
     } else {
-      colors.push(color);
+      entries.push({ row, color });
     }
   }
-  return { colors, skipped };
+  return { entries, skipped };
 }
 
-function toPaletteColor(name: string, color: string | null, group?: string): PaletteColor | null {
+/** A palette color from a row's cells; `value` is the color cell, whose alpha becomes the opacity. */
+function toPaletteColor(
+  name: string,
+  color: string | null,
+  value: string,
+  group?: string,
+): PaletteColor | null {
   if (color === null) {
     return null;
   }
+  const opacity = cssColorAlpha(value);
   return (
-    normalizePaletteColor({ name, color, group }) ??
-    normalizePaletteColor({ name: color, color, group })
+    normalizePaletteColor({ name, color, group, opacity }) ??
+    normalizePaletteColor({ name: color, color, group, opacity })
   );
 }
 

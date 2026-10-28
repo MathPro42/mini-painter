@@ -1,8 +1,15 @@
+import { isWash } from '../utils/paint/regionPaint';
 import type { RegionPaint } from '../utils/paint/regionPaint';
 import type { ParsedSvg, SvgRegion } from '../utils/svg/types';
-import { fillRegionShapes, traceRings, usePixels, useViewBoxUnits } from './canvasPaths';
+import {
+  drawBlended,
+  fillRegionShapes,
+  traceRings,
+  usePixels,
+  useViewBoxUnits,
+} from './canvasPaths';
 import type { CanvasFrame, SvgCanvasContext } from './canvasPaths';
-import { paintMetal, paintShading, paintTones } from './paintTones';
+import { paintMetal, paintShading, paintTones, WASH_BLEND } from './paintTones';
 import type { ToneMaskImages } from './paintTones';
 
 export type { SvgCanvasContext } from './canvasPaths';
@@ -66,9 +73,12 @@ export function paintSvg(
 }
 
 function fillBase(ctx: SvgCanvasContext, region: SvgRegion, paint: RegionPaint | undefined): void {
-  const base = paint?.base?.color;
+  const base = paint?.base;
   if (base !== undefined) {
-    fillRegionShapes(ctx, region, base);
+    // A wash used as Base tints the artwork below it, as it does in the Shade step.
+    drawBlended(ctx, isWash(base) ? WASH_BLEND : 'source-over', () => {
+      fillRegionShapes(ctx, region, base.color);
+    });
     return;
   }
   for (const shape of region.shapes) {

@@ -73,6 +73,8 @@ function readColor(color: Readonly<Record<string, unknown>>): PaletteColor | nul
     name: asString(color['name']),
     color: asString(color['color']),
     group: asString(color['group']),
+    opacity: color['opacity'],
+    recipe: color['recipe'],
   });
 }
 

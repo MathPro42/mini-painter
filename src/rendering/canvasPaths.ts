@@ -88,6 +88,21 @@ export function drawInsideShapes(
   }
 }
 
+/** Runs `draw` with `operation` as the composite operation, then goes back to source-over. */
+export function drawBlended(
+  ctx: SvgCanvasContext,
+  operation: GlobalCompositeOperation,
+  draw: () => void,
+): void {
+  if (operation === 'source-over') {
+    draw();
+    return;
+  }
+  ctx.globalCompositeOperation = operation;
+  draw();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
 export function traceRings(ctx: SvgCanvasContext, rings: readonly Ring[]): void {
   for (const ring of rings) {
     ring.forEach(({ x, y }, index) => {

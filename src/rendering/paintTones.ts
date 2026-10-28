@@ -1,7 +1,8 @@
-import { TONE_STEPS } from '../utils/paint/regionPaint';
+import { isWash, TONE_STEPS } from '../utils/paint/regionPaint';
 import type { RegionPaint, StepPaint, ToneStep } from '../utils/paint/regionPaint';
 import type { SvgRegion } from '../utils/svg/types';
 import {
+  drawBlended,
   drawInsideShapes,
   fillRegionShapes,
   resetCanvas,
@@ -23,6 +24,14 @@ export const NO_TONE_MASK_IMAGES: ToneMaskImages = { layer: null, shade: null, h
  */
 export const METAL_BLEND: GlobalCompositeOperation = 'hard-light';
 
+/**
+ * How a wash (a see-through paint) goes over the paint under it: multiplied,
+ * at full strength where the mask shows. Recesses darken as much as with an
+ * opaque coat, but the paint's own hue shows through, so a colored wash tints
+ * it instead of covering it. Mixing the wash in at its own alpha looked faint.
+ */
+export const WASH_BLEND: GlobalCompositeOperation = 'multiply';
+
 export interface ToneInput {
   readonly regions: readonly SvgRegion[];
   readonly paints: ReadonlyMap<string, RegionPaint>;
@@ -36,6 +45,19 @@ interface Fill {
   readonly color: string;
 }
 
+/** How a paint is drawn: flat, as the metal picture, or multiplied in as a wash. */
+type PaintKind = 'flat' | 'metal' | 'wash';
+
+/** What paintPass draws with, besides the fills. */
+interface PassSources {
+  /** The metal picture to blend into the fills, or `null` for plain fills. */
+  readonly metal: CanvasImageSource | null;
+  /** The tone mask to cut the fills to, or `null`. */
+  readonly mask: CanvasImageSource | null;
+  /** How the pass goes over the drawing. Source-over when missing. */
+  readonly blend?: GlobalCompositeOperation;
+}
+
 /**
  * Paints the bare-metal picture over regions with a metallic Base, tinted by
  * that paint, in place of the flat base coat. Tones still go on top.
@@ -47,16 +69,17 @@ export function paintMetal(
   input: ToneInput,
 ): void {
   if (input.metal !== null) {
-    const fills = stepFills(input, 'base', true);
+    const fills = stepFills(input, 'base', ['metal']);
     paintPass(ctx, scratch, frame, fills, { metal: input.metal, mask: null });
   }
 }
 
 /**
  * Paints the Layer, Shade and Highlight steps in that order, each cut to
- * where the sheet's mask for it shows. Metallic paints show the metal
- * picture, so a metal Layer or Highlight shines on the raised areas and
- * edges. Tones without a mask image, or that no region uses, are skipped.
+ * where the sheet's mask for it shows. Washes multiply the paint under them.
+ * Metallic paints show the metal picture, so a metal Layer or Highlight
+ * shines on the raised areas and edges. Tones without a mask image, or that
+ * no region uses, are skipped.
  */
 export function paintTones(
   ctx: SvgCanvasContext,
@@ -71,10 +94,12 @@ export function paintTones(
     }
     // Without a metal picture, metallic paints are painted flat like the rest.
     const metal = input.metal;
-    const flat = stepFills(input, step, metal === null ? null : false);
+    const flat = stepFills(input, step, metal === null ? ['flat', 'metal'] : ['flat']);
     paintPass(ctx, scratch, frame, flat, { metal: null, mask });
+    const washes = stepFills(input, step, ['wash']);
+    paintPass(ctx, scratch, frame, washes, { metal: null, mask, blend: WASH_BLEND });
     if (metal !== null) {
-      paintPass(ctx, scratch, frame, stepFills(input, step, true), { metal, mask });
+      paintPass(ctx, scratch, frame, stepFills(input, step, ['metal']), { metal, mask });
     }
   }
 }
@@ -92,7 +117,7 @@ export function paintShading(
   input: ToneInput,
   shading: CanvasImageSource,
 ): void {
-  const metallic = input.metal === null ? [] : stepFills(input, 'base', true);
+  const metallic = input.metal === null ? [] : stepFills(input, 'base', ['metal']);
   let source: CanvasImageSource = shading;
   if (metallic.length > 0) {
     resetCanvas(scratch, frame);
@@ -108,37 +133,41 @@ export function paintShading(
   usePixels(ctx);
   // Hard light: the artwork's greys darken (multiply) or lighten (screen) the paint
   // instead of covering it with grey. Opaque black and white still draw as-is.
-  ctx.globalCompositeOperation = 'hard-light';
-  ctx.drawImage(source, 0, 0, frame.width, frame.height);
-  ctx.globalCompositeOperation = 'source-over';
+  drawBlended(ctx, 'hard-light', () => {
+    ctx.drawImage(source, 0, 0, frame.width, frame.height);
+  });
 }
 
-/**
- * The regions painted in `step`, with that step's color. `metallic` keeps
- * only metallic paints (`true`), only the others (`false`), or all (`null`).
- */
-function stepFills(input: ToneInput, step: keyof RegionPaint, metallic: boolean | null): Fill[] {
+/** The regions painted in `step` with a paint of one of `kinds`, with that paint's color. */
+function stepFills(input: ToneInput, step: keyof RegionPaint, kinds: readonly PaintKind[]): Fill[] {
   const fills: Fill[] = [];
   for (const region of input.regions) {
     const paint: StepPaint | undefined = input.paints.get(region.id)?.[step];
-    if (paint !== undefined && (metallic === null || (paint.metallic === true) === metallic)) {
+    if (paint !== undefined && kinds.includes(paintKind(paint))) {
       fills.push({ region, color: paint.color });
     }
   }
   return fills;
 }
 
+function paintKind(paint: StepPaint): PaintKind {
+  if (isWash(paint)) {
+    return 'wash';
+  }
+  return paint.metallic === true ? 'metal' : 'flat';
+}
+
 /**
  * Paints `fills` on the scratch canvas, as metal when a metal picture is
  * given and cut to `mask` when one is given, then lays the result over the
- * drawing. Does nothing without fills.
+ * drawing with the given blend. Does nothing without fills.
  */
 function paintPass(
   ctx: SvgCanvasContext,
   scratch: SvgCanvasContext,
   frame: CanvasFrame,
   fills: readonly Fill[],
-  sources: { readonly metal: CanvasImageSource | null; readonly mask: CanvasImageSource | null },
+  sources: PassSources,
 ): void {
   if (fills.length === 0) {
     return;
@@ -163,5 +192,7 @@ function paintPass(
   }
   scratch.globalCompositeOperation = 'source-over';
   usePixels(ctx);
-  ctx.drawImage(scratch.canvas, 0, 0, frame.width, frame.height);
+  drawBlended(ctx, sources.blend ?? 'source-over', () => {
+    ctx.drawImage(scratch.canvas, 0, 0, frame.width, frame.height);
+  });
 }
