@@ -13,13 +13,16 @@ const withDrawing = (): PaintState => {
   return state;
 };
 
-const colors = (state: PaintState): [string, string][] => [...state.regionColors.value];
+const colors = (state: PaintState): [string, string | undefined][] =>
+  Array.from(state.regionPaints.value, ([id, paint]) => [id, paint.base?.color]);
+const baseOf = (state: PaintState, id: string): string | undefined =>
+  state.regionPaints.value.get(id)?.base?.color;
 
 describe('loadSvg', () => {
   it('starts with no SVG, no colors and no selection', () => {
     const state = createPaintState();
     expect(state.svg.value).toBeNull();
-    expect(state.regionColors.value.size).toBe(0);
+    expect(state.regionPaints.value.size).toBe(0);
     expect(state.selectedRegionId.value).toBeNull();
   });
 
@@ -32,11 +35,11 @@ describe('loadSvg', () => {
   it('clears colors and selection from the previous drawing in a single update', () => {
     const state = createPaintState();
     state.loadSvg(DRAWING);
-    state.setRegionColor('region-0', '#c8553d');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
     state.selectRegion('region-1');
     const seen: [number, string | null][] = [];
     const stop = effect(() => {
-      seen.push([state.regionColors.value.size, state.selectedRegionId.value]);
+      seen.push([state.regionPaints.value.size, state.selectedRegionId.value]);
     });
     state.loadSvg(OTHER_DRAWING);
     stop();
@@ -50,13 +53,13 @@ describe('loadSvg', () => {
   it('keeps the current drawing when the new one is invalid', () => {
     const state = createPaintState();
     state.loadSvg(DRAWING);
-    state.setRegionColor('region-0', '#c8553d');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
     const before = state.svg.value;
     expect(() => {
       state.loadSvg('<svg><text>no shapes</text></svg>');
     }).toThrow(RangeError);
     expect(state.svg.value).toBe(before);
-    expect(state.regionColors.value.get('region-0')).toBe('#c8553d');
+    expect(baseOf(state, 'region-0')).toBe('#c8553d');
   });
 });
 
@@ -82,14 +85,14 @@ describe('selectRegion', () => {
   });
 });
 
-describe('setRegionColor', () => {
+describe('setRegionStep', () => {
   it('assigns normalized colors per region without mutating the previous map', () => {
     const state = createPaintState();
     state.loadSvg(DRAWING);
-    const before = state.regionColors.value;
-    state.setRegionColor('region-0', '#ABC');
-    state.setRegionColor('region-1', '2e8b57');
-    expect([...state.regionColors.value]).toEqual([
+    const before = state.regionPaints.value;
+    state.setRegionStep('region-0', 'base', { color: '#ABC' });
+    state.setRegionStep('region-1', 'base', { color: '2e8b57' });
+    expect(colors(state)).toEqual([
       ['region-0', '#aabbcc'],
       ['region-1', '#2e8b57'],
     ]);
@@ -100,12 +103,12 @@ describe('setRegionColor', () => {
     const state = createPaintState();
     state.loadSvg(DRAWING);
     expect(() => {
-      state.setRegionColor('region-5', '#ffffff');
+      state.setRegionStep('region-5', 'base', { color: '#ffffff' });
     }).toThrow(RangeError);
     expect(() => {
-      state.setRegionColor('region-0', 'brick');
+      state.setRegionStep('region-0', 'base', { color: 'brick' });
     }).toThrow(RangeError);
-    expect(state.regionColors.value.size).toBe(0);
+    expect(state.regionPaints.value.size).toBe(0);
   });
 });
 
@@ -121,9 +124,9 @@ describe('undo and redo', () => {
 
   it('step back and forth through painting steps', () => {
     const state = withDrawing();
-    state.setRegionColor('region-0', '#c8553d');
-    state.setRegionColor('region-1', '#2e8b57');
-    state.setRegionColor('region-0', '#111111');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
+    state.setRegionStep('region-1', 'base', { color: '#2e8b57' });
+    state.setRegionStep('region-0', 'base', { color: '#111111' });
 
     state.undo();
     expect(colors(state)).toEqual([
@@ -140,15 +143,15 @@ describe('undo and redo', () => {
     expect(colors(state)).toEqual([['region-0', '#c8553d']]);
     state.redo();
     state.redo();
-    expect(state.regionColors.value.get('region-0')).toBe('#111111');
+    expect(baseOf(state, 'region-0')).toBe('#111111');
     expect(state.canRedo.value).toBe(false);
   });
 
   it('forget undone steps once something new is painted', () => {
     const state = withDrawing();
-    state.setRegionColor('region-0', '#c8553d');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
     state.undo();
-    state.setRegionColor('region-1', '#2e8b57');
+    state.setRegionStep('region-1', 'base', { color: '#2e8b57' });
     expect(state.canRedo.value).toBe(false);
     state.redo();
     expect(colors(state)).toEqual([['region-1', '#2e8b57']]);
@@ -156,8 +159,8 @@ describe('undo and redo', () => {
 
   it('do not record painting a region the color it already has', () => {
     const state = withDrawing();
-    state.setRegionColor('region-0', '#c8553d');
-    state.setRegionColor('region-0', '#C8553D');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
+    state.setRegionStep('region-0', 'base', { color: '#C8553D' });
     state.undo();
     expect(colors(state)).toEqual([]);
     expect(state.canUndo.value).toBe(false);
@@ -165,10 +168,10 @@ describe('undo and redo', () => {
 
   it('notify subscribers once per step, with colors and availability in sync', () => {
     const state = withDrawing();
-    state.setRegionColor('region-0', '#c8553d');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
     const seen: [number, boolean, boolean][] = [];
     const stop = effect(() => {
-      seen.push([state.regionColors.value.size, state.canUndo.value, state.canRedo.value]);
+      seen.push([state.regionPaints.value.size, state.canUndo.value, state.canRedo.value]);
     });
     state.undo();
     stop();
@@ -180,7 +183,7 @@ describe('undo and redo', () => {
 
   it('start over when a new drawing is loaded', () => {
     const state = withDrawing();
-    state.setRegionColor('region-0', '#c8553d');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
     state.loadSvg(OTHER_DRAWING);
     expect(state.canUndo.value).toBe(false);
     state.undo();
@@ -188,15 +191,15 @@ describe('undo and redo', () => {
   });
 });
 
-describe('previewRegionColor', () => {
+describe('previewRegionStep', () => {
   it('shows a color without recording a step; the next commit records the whole change', () => {
     const state = withDrawing();
-    state.previewRegionColor('region-0', '#aaaaaa');
-    state.previewRegionColor('region-0', '#bbbbbb');
-    expect(state.regionColors.value.get('region-0')).toBe('#bbbbbb');
+    state.previewRegionStep('region-0', 'base', { color: '#aaaaaa' });
+    state.previewRegionStep('region-0', 'base', { color: '#bbbbbb' });
+    expect(baseOf(state, 'region-0')).toBe('#bbbbbb');
     expect(state.canUndo.value).toBe(false);
 
-    state.setRegionColor('region-0', '#cccccc');
+    state.setRegionStep('region-0', 'base', { color: '#cccccc' });
     expect(state.canUndo.value).toBe(true);
     state.undo();
     expect(colors(state)).toEqual([]);
@@ -204,8 +207,8 @@ describe('previewRegionColor', () => {
 
   it('is discarded by undo', () => {
     const state = withDrawing();
-    state.setRegionColor('region-0', '#c8553d');
-    state.previewRegionColor('region-1', '#2e8b57');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
+    state.previewRegionStep('region-1', 'base', { color: '#2e8b57' });
     state.undo();
     expect(colors(state)).toEqual([]);
     state.redo();
@@ -214,20 +217,20 @@ describe('previewRegionColor', () => {
 
   it('records nothing when the user settles back on the original color', () => {
     const state = withDrawing();
-    state.setRegionColor('region-0', '#c8553d');
-    state.previewRegionColor('region-0', '#ffffff');
-    state.setRegionColor('region-0', '#c8553d');
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
+    state.previewRegionStep('region-0', 'base', { color: '#ffffff' });
+    state.setRegionStep('region-0', 'base', { color: '#c8553d' });
     state.undo();
     expect(colors(state)).toEqual([]);
   });
 
-  it('validates like setRegionColor', () => {
+  it('validates like setRegionStep', () => {
     const state = withDrawing();
     expect(() => {
-      state.previewRegionColor('region-9', '#ffffff');
+      state.previewRegionStep('region-9', 'base', { color: '#ffffff' });
     }).toThrow(RangeError);
     expect(() => {
-      state.previewRegionColor('region-0', 'brick');
+      state.previewRegionStep('region-0', 'base', { color: 'brick' });
     }).toThrow(RangeError);
     expect(colors(state)).toEqual([]);
   });

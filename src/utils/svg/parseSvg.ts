@@ -3,9 +3,10 @@ import { parseXml } from '../xml';
 import type { XmlElement } from '../xml';
 import { ringsBounds, unionBounds } from './geometry';
 import type { FillRule } from './geometry';
-import { buildArtwork, elementName, findLayers, hasName } from './layers';
+import { buildArtwork, elementName, findLayers, findPath, hasName } from './layers';
 import type { LayerTree } from './layers';
 import { readNumbers, readPlainLength } from './numbers';
+import { findMetalArtwork, findToneMasks, NO_TONE_MASKS } from './toneMasks';
 import { isShapeElement, shapeRings } from './shapes';
 import { declaredValue, parseStyleSheet } from './styles';
 import type { StyleRule } from './styles';
@@ -78,6 +79,8 @@ export function parseSvg(source: string): ParsedSvg {
   const { layout, regions, regionLayers, paintSlot } = detection;
   const artworkLayers = (from: number, to?: number): XmlElement[] =>
     tree.layers.slice(from, to).filter((layer) => !regionLayers.has(layer));
+  // Tone and metal layers are a paint-scheme sheet convention; other SVGs are plain fills.
+  const isSheet = layout === 'selectionMap';
   return {
     viewBox: readViewBox(root) ?? viewBoxAround(regions),
     layout,
@@ -86,6 +89,8 @@ export function parseSvg(source: string): ParsedSvg {
       below: buildArtwork(source, tree, artworkLayers(0, paintSlot)),
       above: buildArtwork(source, tree, artworkLayers(paintSlot)),
     },
+    toneMasks: isSheet ? findToneMasks(source, tree, artworkLayers(0), rules) : NO_TONE_MASKS,
+    metal: isSheet ? findMetalArtwork(source, tree, artworkLayers(0)) : null,
   };
 }
 
@@ -238,23 +243,6 @@ function resolvePaint(value: string, inherited: string | null): string | null {
 function collectStyleText(element: XmlElement): string {
   const own = element.localName === 'style' ? element.text : '';
   return [own, ...element.children.map(collectStyleText)].join('\n');
-}
-
-/** Depth-first search; returns the elements from the root down to the first match. */
-function findPath(
-  element: XmlElement,
-  matches: (element: XmlElement) => boolean,
-): XmlElement[] | null {
-  if (matches(element)) {
-    return [element];
-  }
-  for (const child of element.children) {
-    const path = findPath(child, matches);
-    if (path !== null) {
-      return [element, ...path];
-    }
-  }
-  return null;
 }
 
 /** The root's `viewBox`, else its plain `width`/`height`, else `null`. */

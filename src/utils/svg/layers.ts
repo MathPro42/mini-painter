@@ -77,22 +77,69 @@ export function buildArtwork(
   if (layers.length === 0) {
     return null;
   }
-  const markup = (element: XmlElement): string => source.slice(element.start, element.end);
-  const resources = (container: XmlElement): string =>
-    container.children
-      .filter((child) => RESOURCE_ELEMENTS.has(child.localName))
-      .map(markup)
-      .join('');
-  let open = resources(tree.root);
+  return wrapArtwork(source, tree, layers.map((layer) => markupOf(source, layer)).join(''));
+}
+
+/**
+ * Places `body` inside `elements`, outermost first: each one's start tag and
+ * resources are copied from `source`, so its class, mask and transform still
+ * apply. The innermost element's own content is replaced by `body`.
+ */
+export function nestInElements(
+  source: string,
+  elements: readonly XmlElement[],
+  body: string,
+): string {
+  let open = '';
   let close = '';
-  for (const wrapper of tree.wrappers) {
-    open += source.slice(wrapper.start, wrapper.startTagEnd) + resources(wrapper);
-    close = `</${wrapper.name}>${close}`;
+  for (const element of elements) {
+    const startTag = source.slice(element.start, element.startTagEnd);
+    // A self-closing tag (`<g/>`) has to be opened to hold the body.
+    open += startTag.endsWith('/>') ? `${startTag.slice(0, -2)}>` : startTag;
+    open += resourcesOf(source, element);
+    close = `</${element.name}>${close}`;
   }
+  return open + body + close;
+}
+
+/**
+ * Wraps `body` in the drawing's root resources and wrapper groups, giving a
+ * fragment that renders on its own like the original drawing would.
+ */
+export function wrapArtwork(source: string, tree: LayerTree, body: string): ArtworkFragment {
   return {
     namespaces: namespaceAttributes(tree.root),
-    body: open + layers.map(markup).join('') + close,
+    body: resourcesOf(source, tree.root) + nestInElements(source, tree.wrappers, body),
   };
+}
+
+/** Depth-first search; returns the elements from `element` down to the first match. */
+export function findPath(
+  element: XmlElement,
+  matches: (element: XmlElement) => boolean,
+): XmlElement[] | null {
+  if (matches(element)) {
+    return [element];
+  }
+  for (const child of element.children) {
+    const path = findPath(child, matches);
+    if (path !== null) {
+      return [element, ...path];
+    }
+  }
+  return null;
+}
+
+function markupOf(source: string, element: XmlElement): string {
+  return source.slice(element.start, element.end);
+}
+
+/** Resource elements (defs, styles, masks…) directly inside `container`, verbatim. */
+function resourcesOf(source: string, container: XmlElement): string {
+  return container.children
+    .filter((child) => RESOURCE_ELEMENTS.has(child.localName))
+    .map((child) => markupOf(source, child))
+    .join('');
 }
 
 /**

@@ -9,8 +9,10 @@ right in the browser. Nothing is uploaded to a server.
 > pick its regions and paint them on a view you can zoom into. Import paint palettes from
 > spreadsheets (.xlsx, .xls or .csv with a color column such as "Value", "Color" or "Hex");
 > each file becomes a palette you can pick from, kept in your browser between visits. Paint
-> regions from the palette in use, or export it as .xlsx. Undo and Redo (Ctrl+Z,
-> Ctrl+Shift+Z) step through your changes. 3D model upload is not there yet; until a file is
+> regions from the palette in use, or export it as .xlsx. Each region takes four paint steps
+> (Base, Layer, Shade, Highlight); on paint-scheme sheets the tones show where the sheet's own
+> masks put them, and metallic paints get the sheet's metal look. Randomize suggests a scheme.
+> Undo and Redo (Ctrl+Z, Ctrl+Shift+Z) step through your changes. 3D model upload is not there yet; until a file is
 > opened, the viewport shows a placeholder cube.
 
 ## Quick start

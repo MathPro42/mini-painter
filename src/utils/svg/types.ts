@@ -1,3 +1,4 @@
+import type { ToneStep } from '../paint/regionPaint';
 import type { Bounds, FillRule, Ring } from './geometry';
 
 /** The SVG's user coordinate system, from its `viewBox`. */
@@ -48,6 +49,12 @@ export interface ArtworkFragment {
  */
 export type RegionLayout = 'selectionMap' | 'topLevel';
 
+/**
+ * Per tone step, artwork that renders opaque white where that tone shows on
+ * the model (the sheet's mask for it), or `null` when the sheet has none.
+ */
+export type ToneMasks = Readonly<Record<ToneStep, ArtworkFragment | null>>;
+
 export interface ParsedSvg {
   readonly viewBox: ViewBox;
   readonly layout: RegionLayout;
@@ -57,4 +64,8 @@ export interface ParsedSvg {
     readonly below: ArtworkFragment | null;
     readonly above: ArtworkFragment | null;
   };
+  /** Where Layer, Shade and Highlight paints show. Only paint-scheme sheets have them. */
+  readonly toneMasks: ToneMasks;
+  /** The sheet's picture of the model as bare metal, for metallic paints, or `null`. */
+  readonly metal: ArtworkFragment | null;
 }

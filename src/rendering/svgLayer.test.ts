@@ -64,16 +64,16 @@ describe('createSvgLayer', () => {
     expect(onDrawingChange).toHaveBeenCalledExactlyOnceWith(true);
   });
 
-  it('repaints on color and selection changes without rebuilding', () => {
+  it('repaints on paint and selection changes without rebuilding', () => {
     const state = createAppState();
     createSvgLayer(new Scene(), state, vi.fn());
     state.loadSvg(DRAWING);
-    state.setRegionColor('region-0', '#c8553d');
+    state.setRegionStep('region-0', 'shade', { color: '#c8553d' });
     state.selectRegion('region-1');
 
     expect(models).toHaveLength(1);
     expect(models[0]?.paint).toHaveBeenLastCalledWith(
-      new Map([['region-0', '#c8553d']]),
+      new Map([['region-0', { shade: { color: '#c8553d' } }]]),
       'region-1',
     );
   });

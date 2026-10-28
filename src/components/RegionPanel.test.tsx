@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/preact';
+import { fireEvent, render, screen, within } from '@testing-library/preact';
 import { act } from 'preact/test-utils';
 import { describe, expect, it } from 'vitest';
 import { createAppState } from '../state/appState';
@@ -20,7 +20,13 @@ const renderPanel = (svg: string | null = FILLED): AppState => {
   return state;
 };
 
-const colorInput = (): HTMLInputElement => screen.getByLabelText(/Color of|Select a region/);
+const colorInput = (): HTMLInputElement => screen.getByLabelText(/color of|Select a region/);
+const regionButtons = (): HTMLElement[] => within(screen.getByRole('list')).getAllByRole('button');
+
+const PALETTE = [
+  { name: 'brick red', color: '#c8553d' },
+  { name: 'sea green', color: '#2e8b57' },
+];
 
 describe('RegionPanel', () => {
   it('renders nothing before a drawing is loaded', () => {
@@ -31,10 +37,7 @@ describe('RegionPanel', () => {
   it('lists every region with a count', () => {
     renderPanel();
     expect(screen.getByRole('heading', { name: 'Regions 2' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
-      'left',
-      'right',
-    ]);
+    expect(regionButtons().map((button) => button.textContent)).toEqual(['left', 'right']);
   });
 
   it('selects a region from the list, and deselects it on a second press', () => {
@@ -56,7 +59,7 @@ describe('RegionPanel', () => {
       state.selectRegion('region-1');
     });
     expect(screen.getByRole('button', { name: 'right' })).toHaveAttribute('aria-pressed', 'true');
-    expect(colorInput()).toHaveAccessibleName('Color of right');
+    expect(colorInput()).toHaveAccessibleName('Base color of right');
   });
 
   it('disables the color input until a region is selected', () => {
@@ -71,7 +74,7 @@ describe('RegionPanel', () => {
     expect(colorInput()).toHaveValue('#c8553d');
 
     fireEvent.input(colorInput(), { target: { value: '#2e8b57' } });
-    expect(state.regionColors.value.get('region-0')).toBe('#2e8b57');
+    expect(state.regionPaints.value.get('region-0')?.base?.color).toBe('#2e8b57');
     expect(colorInput()).toHaveValue('#2e8b57');
   });
 
@@ -85,16 +88,38 @@ describe('RegionPanel', () => {
     fireEvent.change(colorInput(), { target: { value: '#2e8b57' } });
     expect(state.canUndo.value).toBe(true);
     state.undo();
-    expect(state.regionColors.value.size).toBe(0);
+    expect(state.regionPaints.value.size).toBe(0);
   });
 
-  it('names the palette color each region is painted with', async () => {
+  it('names the paint each region has as its Base', async () => {
     const state = renderPanel();
     await act(() => {
-      state.addPaletteColors([{ name: 'brick red', color: '#c8553d' }]);
+      state.setRegionStep('region-0', 'base', { color: '#c8553d', name: 'brick red' });
+      state.setRegionStep('region-1', 'base', { color: '#123456' });
     });
     expect(screen.getByRole('button', { name: 'left brick red' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'right' })).toBeInTheDocument();
+  });
+
+  it('randomizes Base paints from the palette in use, as one undoable step', async () => {
+    const state = renderPanel();
+    const randomize = screen.getByRole('button', { name: 'Randomize' });
+    expect(randomize).toBeDisabled();
+    await act(() => {
+      state.addPalette('base coats', PALETTE);
+    });
+    fireEvent.click(randomize);
+    const names = [...state.regionPaints.value.values()].map((paint) => paint.base?.name);
+    expect(names).toHaveLength(2);
+    expect(names.every((name) => name === 'brick red' || name === 'sea green')).toBe(true);
+    state.undo();
+    expect(state.regionPaints.value.size).toBe(0);
+  });
+
+  it('paints only the Base of plain drawings, without a step list', () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'left' }));
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
   });
 
   it('marks unpainted regions and offers a neutral starting color', () => {
@@ -109,7 +134,7 @@ describe('RegionPanel', () => {
   it('updates swatches when colors change', async () => {
     const state = renderPanel(UNPAINTED);
     await act(() => {
-      state.setRegionColor('region-0', '#e0b13c');
+      state.setRegionStep('region-0', 'base', { color: '#e0b13c' });
     });
     const swatch = screen.getByRole('button', { name: 'cap' }).querySelector('.swatch');
     expect(swatch).not.toHaveClass('swatch--empty');

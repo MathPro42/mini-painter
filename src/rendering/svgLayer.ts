@@ -14,7 +14,7 @@ export interface SvgLayer {
 
 /**
  * Keeps the scene's SVG plane in sync with state: builds a plane for each
- * uploaded drawing, and repaints it when colors or the selection change.
+ * uploaded drawing, and repaints it when paints or the selection change.
  * `onDrawingChange` runs each time a drawing appears, is replaced or goes away.
  */
 export function createSvgLayer(
@@ -27,7 +27,7 @@ export function createSvgLayer(
 
   const stopSync = effect(() => {
     const svg = state.svg.value;
-    const colors = state.regionColors.value;
+    const paints = state.regionPaints.value;
     const selectedRegionId = state.selectedRegionId.value;
     if (svg !== shown) {
       shown = svg;
@@ -35,7 +35,7 @@ export function createSvgLayer(
       model = svg === null ? null : addModel(scene, svg);
       onDrawingChange(svg !== null);
     }
-    model?.paint(colors, selectedRegionId);
+    model?.paint(paints, selectedRegionId);
   });
 
   return {

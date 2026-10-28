@@ -1,49 +1,52 @@
 import type { JSX } from 'preact';
 import type { AppState } from '../state/appState';
-import { paletteNamesByColor } from '../utils/palette/paletteList';
 import type { SvgRegion } from '../utils/svg/types';
+import { PaintStepPicker } from './PaintStepPicker';
 import { useSignalValue } from './useSignalValue';
 
 interface RegionPanelProps {
   state: AppState;
 }
 
-/** What the color input shows for a region that has no color yet. */
-export const UNPAINTED_INPUT_COLOR = '#808080';
+export { UNPAINTED_INPUT_COLOR } from './PaintStepPicker';
 
 /**
- * Lists the drawing's regions and paints the selected one. Selecting here
- * and clicking the drawing in the viewport share the same state. A region
- * painted with a palette color shows that color's name.
+ * Lists the drawing's regions and paints the selected one, step by step.
+ * Selecting here and clicking the drawing in the viewport share the same
+ * state. A region with a named Base paint shows that name.
  */
 export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
   const svg = useSignalValue(state.svg);
-  const colors = useSignalValue(state.regionColors);
+  const paints = useSignalValue(state.regionPaints);
   const selectedId = useSignalValue(state.selectedRegionId);
-  const palettes = useSignalValue(state.palettes);
-  const activeId = useSignalValue(state.activePaletteId);
+  const palette = useSignalValue(state.activePalette);
   if (svg === null) {
     return null;
   }
-  const colorOf = (region: SvgRegion): string | null => colors.get(region.id) ?? region.fill;
-  // Names from the palette in use win; other palettes still name colors painted from them.
-  const paintNames = paletteNamesByColor(
-    [...palettes]
-      .sort((a, b) => Number(b.id === activeId) - Number(a.id === activeId))
-      .flatMap((palette) => palette.colors),
-  );
-  const paintOf = (region: SvgRegion): string | undefined => {
-    const color = colorOf(region);
-    return color === null ? undefined : paintNames.get(color);
-  };
+  const colorOf = (region: SvgRegion): string | null =>
+    paints.get(region.id)?.base?.color ?? region.fill;
   const selected = svg.regions.find((region) => region.id === selectedId) ?? null;
+  const colors = palette?.colors ?? [];
 
   return (
     <aside class="panel" aria-labelledby="region-panel-title">
-      <h2 id="region-panel-title" class="panel__title">
-        Regions <span class="panel__count">{svg.regions.length}</span>
-      </h2>
-      <ColorField state={state} region={selected} color={selected && colorOf(selected)} />
+      <div class="panel__header">
+        <h2 id="region-panel-title" class="panel__title">
+          Regions <span class="panel__count">{svg.regions.length}</span>
+        </h2>
+        <button
+          type="button"
+          class="button button--small"
+          disabled={colors.length === 0}
+          title="Give every region a random Base paint from the palette in use"
+          onClick={() => {
+            state.randomizeRegions(colors);
+          }}
+        >
+          Randomize
+        </button>
+      </div>
+      <PaintStepPicker state={state} region={selected} />
       <ul class="region-list">
         {svg.regions.map((region) => (
           <li key={region.id}>
@@ -60,16 +63,7 @@ export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
                 style={{ backgroundColor: colorOf(region) ?? 'transparent' }}
                 aria-hidden="true"
               />
-              <span class="region-list__text">
-                <span class="region-list__name">{region.name}</span>
-                {paintOf(region) !== undefined && (
-                  // The space keeps screen readers from running the two names together.
-                  <>
-                    {' '}
-                    <span class="region-list__paint">{paintOf(region)}</span>
-                  </>
-                )}
-              </span>
+              <RegionText name={region.name} paint={paints.get(region.id)?.base?.name} />
             </button>
           </li>
         ))}
@@ -78,33 +72,17 @@ export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
   );
 }
 
-interface ColorFieldProps {
-  state: AppState;
-  region: SvgRegion | null;
-  color: string | null;
-}
-
-function ColorField({ state, region, color }: ColorFieldProps): JSX.Element {
+function RegionText({ name, paint }: { name: string; paint: string | undefined }): JSX.Element {
   return (
-    <label class="color-field">
-      <span>{region === null ? 'Select a region to paint it' : `Color of ${region.name}`}</span>
-      <input
-        type="color"
-        class="color-field__input"
-        value={color ?? UNPAINTED_INPUT_COLOR}
-        disabled={region === null}
-        // While the picker is open, colors only preview; closing it records one undo step.
-        onInput={(event) => {
-          if (region !== null) {
-            state.previewRegionColor(region.id, event.currentTarget.value);
-          }
-        }}
-        onChange={(event) => {
-          if (region !== null) {
-            state.setRegionColor(region.id, event.currentTarget.value);
-          }
-        }}
-      />
-    </label>
+    <span class="region-list__text">
+      <span class="region-list__name">{name}</span>
+      {paint !== undefined && (
+        // The space keeps screen readers from running the two names together.
+        <>
+          {' '}
+          <span class="region-list__paint">{paint}</span>
+        </>
+      )}
+    </span>
   );
 }

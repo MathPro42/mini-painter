@@ -1,6 +1,8 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import type { AppState } from '../state/appState';
+import { PAINT_STEP_LABELS, stepPaintFromPalette } from '../utils/paint/regionPaint';
+import type { PaintStep, RegionPaint, StepPaint } from '../utils/paint/regionPaint';
 import type { PaletteColor } from '../utils/palette/paletteColor';
 import { filterPalette, groupPalette } from '../utils/palette/paletteList';
 import type { SvgRegion } from '../utils/svg/types';
@@ -30,9 +32,10 @@ export function PalettePanel({ state }: PalettePanelProps): JSX.Element {
   const saved = useSignalValue(state.palettesSaved);
   const svg = useSignalValue(state.svg);
   const selectedId = useSignalValue(state.selectedRegionId);
-  const regionColors = useSignalValue(state.regionColors);
+  const paints = useSignalValue(state.regionPaints);
+  const step = useSignalValue(state.activeStep);
   const region = svg?.regions.find((candidate) => candidate.id === selectedId) ?? null;
-  const regionColor = region === null ? null : (regionColors.get(region.id) ?? region.fill);
+  const current = region === null ? undefined : currentPaint(region, paints.get(region.id), step);
 
   return (
     <aside class="panel panel--start" aria-labelledby="palette-panel-title">
@@ -52,7 +55,8 @@ export function PalettePanel({ state }: PalettePanelProps): JSX.Element {
           state={state}
           palette={active.colors}
           region={region}
-          regionColor={regionColor}
+          step={step}
+          current={current}
         />
       )}
       <PaletteAddForm state={state} />
@@ -65,11 +69,43 @@ interface PaletteBrowserProps {
   palette: readonly PaletteColor[];
   /** The selected region, which a click paints. */
   region: SvgRegion | null;
-  regionColor: string | null;
+  /** The step a click paints. */
+  step: PaintStep;
+  /** What that step of the region is painted with now. */
+  current: StepPaint | undefined;
+}
+
+/**
+ * What a region's step is painted with: its paint, or for the Base of an
+ * unpainted region, the drawing's own fill.
+ */
+function currentPaint(
+  region: SvgRegion,
+  paint: RegionPaint | undefined,
+  step: PaintStep,
+): StepPaint | undefined {
+  const own = paint?.[step];
+  if (own !== undefined || step !== 'base' || region.fill === null) {
+    return own;
+  }
+  return { color: region.fill };
+}
+
+/** Whether a palette color is what a step is painted with. Unnamed paints match by color. */
+function isCurrentColor(color: PaletteColor, current: StepPaint | undefined): boolean {
+  return (
+    current?.color === color.color && (current.name === undefined || current.name === color.name)
+  );
 }
 
 /** The filter box and the grouped list of colors. */
-function PaletteBrowser({ state, palette, region, regionColor }: PaletteBrowserProps): JSX.Element {
+function PaletteBrowser({
+  state,
+  palette,
+  region,
+  step,
+  current,
+}: PaletteBrowserProps): JSX.Element {
   const [query, setQuery] = useState('');
   const visible = filterPalette(palette, query);
   const groups = groupPalette(visible);
@@ -89,8 +125,8 @@ function PaletteBrowser({ state, palette, region, regionColor }: PaletteBrowserP
       />
       <p class="panel__hint">
         {region === null
-          ? 'Select a region, then pick a color for it.'
-          : `Pick a color for ${region.name}.`}
+          ? 'Select a region, then pick a paint for it.'
+          : `Pick a ${PAINT_STEP_LABELS[step]} paint for ${region.name}.`}
       </p>
       <div class="palette-list">
         {groups.map(({ group, colors }) => (
@@ -103,7 +139,8 @@ function PaletteBrowser({ state, palette, region, regionColor }: PaletteBrowserP
                   state={state}
                   color={color}
                   region={region}
-                  isCurrent={color.color === regionColor}
+                  step={step}
+                  isCurrent={isCurrentColor(color, current)}
                 />
               ))}
             </ul>
@@ -119,11 +156,12 @@ interface PaletteItemProps {
   state: AppState;
   color: PaletteColor;
   region: SvgRegion | null;
-  /** Whether the selected region already has this color. */
+  step: PaintStep;
+  /** Whether the selected region's step already has this paint. */
   isCurrent: boolean;
 }
 
-function PaletteItem({ state, color, region, isCurrent }: PaletteItemProps): JSX.Element {
+function PaletteItem({ state, color, region, step, isCurrent }: PaletteItemProps): JSX.Element {
   return (
     <li class="palette-item">
       <button
@@ -134,7 +172,7 @@ function PaletteItem({ state, color, region, isCurrent }: PaletteItemProps): JSX
         aria-current={isCurrent}
         onClick={() => {
           if (region !== null) {
-            state.setRegionColor(region.id, color.color);
+            state.setRegionStep(region.id, step, stepPaintFromPalette(color));
           }
         }}
       >
