@@ -5,6 +5,9 @@ import type { SvgRegion, ViewBox } from '../utils/svg/types';
 export type SvgCanvasContext = Pick<
   CanvasRenderingContext2D,
   | 'canvas'
+  | 'save'
+  | 'restore'
+  | 'clip'
   | 'setTransform'
   | 'clearRect'
   | 'drawImage'
@@ -56,6 +59,32 @@ export function fillRegionShapes(ctx: SvgCanvasContext, region: SvgRegion, color
     traceRings(ctx, shape.rings);
     ctx.fillStyle = color;
     ctx.fill(shape.fillRule);
+  }
+}
+
+/**
+ * Runs `draw` once per shape of `regions`, clipped to that shape, with the
+ * transform back in canvas pixels. Clipping shape by shape keeps each shape's
+ * own fill rule. A `destination-in` cut can't do this: every draw of it would
+ * erase all the shapes drawn before.
+ */
+export function drawInsideShapes(
+  ctx: SvgCanvasContext,
+  frame: CanvasFrame,
+  regions: readonly SvgRegion[],
+  draw: () => void,
+): void {
+  for (const region of regions) {
+    for (const shape of region.shapes) {
+      ctx.save();
+      useViewBoxUnits(ctx, frame);
+      ctx.beginPath();
+      traceRings(ctx, shape.rings);
+      ctx.clip(shape.fillRule);
+      usePixels(ctx);
+      draw();
+      ctx.restore();
+    }
   }
 }
 

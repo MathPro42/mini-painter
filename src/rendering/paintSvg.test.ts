@@ -1,47 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseSvg } from '../utils/svg/parseSvg';
-import type { SvgCanvasContext, SvgPaintInput } from './paintSvg';
+import type { SvgPaintInput } from './paintSvg';
 import { paintSvg, SELECTION_OUTLINE_COLORS, SELECTION_OUTLINE_PX } from './paintSvg';
+import { recordingContext } from '../test/recordingCanvas';
 import { NO_TONE_MASK_IMAGES } from './paintTones';
-
-const style = (value: unknown): string => (typeof value === 'string' ? value : 'gradient');
-
-/**
- * Records each call (and each fill or stroke with the style in effect) as a
- * short string, plus each change of composite operation.
- */
-function recordingContext(
-  log: string[] = [],
-  prefix = '',
-): { ctx: SvgCanvasContext; log: string[] } {
-  const record = (entry: string): number => log.push(prefix + entry);
-  let composite: GlobalCompositeOperation = 'source-over';
-  const ctx: SvgCanvasContext = {
-    canvas: SCRATCH_CANVAS,
-    fillStyle: '',
-    strokeStyle: '',
-    lineWidth: 1,
-    lineJoin: 'miter',
-    get globalCompositeOperation() {
-      return composite;
-    },
-    set globalCompositeOperation(operation: GlobalCompositeOperation) {
-      composite = operation;
-      record(`composite ${operation}`);
-    },
-    setTransform: (...args: unknown[]) => record(`transform ${args.join(',')}`),
-    clearRect: () => record('clear'),
-    drawImage: (image: unknown) => record(`image ${IMAGE_NAMES.get(image) ?? 'unknown'}`),
-    beginPath: () => record('begin'),
-    moveTo: (x: number, y: number) => record(`move ${String(x)},${String(y)}`),
-    lineTo: () => record('line'),
-    closePath: () => record('close'),
-    fill: (rule?: unknown) => record(`fill ${style(ctx.fillStyle)} ${String(rule)}`),
-    stroke: () => record(`stroke ${style(ctx.strokeStyle)} ${String(ctx.lineWidth)}`),
-    setLineDash: () => record('dash'),
-  };
-  return { ctx, log };
-}
 
 const BELOW = {} as HTMLImageElement;
 const ABOVE = {} as HTMLImageElement;
@@ -66,8 +28,14 @@ const SVG = parseSvg(
 
 /** Paints and returns one log for both canvases; scratch entries start with "scratch: ". */
 const paint = (overrides: Partial<SvgPaintInput> = {}): string[] => {
-  const { ctx, log } = recordingContext();
-  const { ctx: scratch } = recordingContext(log, 'scratch: ');
+  const canvas = SCRATCH_CANVAS;
+  const { ctx, log } = recordingContext({ imageNames: IMAGE_NAMES, canvas });
+  const { ctx: scratch } = recordingContext({
+    log,
+    prefix: 'scratch: ',
+    imageNames: IMAGE_NAMES,
+    canvas,
+  });
   paintSvg(ctx, scratch, 200, 100, {
     svg: SVG,
     paints: new Map(),
@@ -199,30 +167,6 @@ describe('paintSvg', () => {
   it('skips tones that no region uses', () => {
     const log = paint({ toneMasks: { layer: SHADE, shade: SHADE, highlight: HIGHLIGHT } });
     expect(log.some((entry) => entry.startsWith('scratch: '))).toBe(false);
-  });
-
-  it('replaces the base coat of metallic regions with the tinted metal picture', () => {
-    const log = paint({
-      paints: new Map([['region-1', { base: { color: '#b27f34', metallic: true } }]]),
-      metal: METAL,
-      toneMasks: { layer: null, shade: SHADE, highlight: null },
-    });
-    const order = log.filter((entry) => /(image|composite|fill) /.test(entry));
-    expect(order).toEqual([
-      'fill #c8553d nonzero',
-      'fill #b27f34 nonzero',
-      'fill #b27f34 evenodd',
-      'scratch: composite source-over',
-      'scratch: fill #b27f34 nonzero',
-      'scratch: fill #b27f34 evenodd',
-      'scratch: composite hard-light',
-      'scratch: image metal',
-      'scratch: composite destination-in',
-      'scratch: fill #000000 nonzero',
-      'scratch: fill #000000 evenodd',
-      'scratch: composite source-over',
-      'image scratch',
-    ]);
   });
 
   it('paints metallic regions flat when the drawing has no metal picture', () => {

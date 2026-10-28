@@ -2,7 +2,7 @@ import type { RegionPaint } from '../utils/paint/regionPaint';
 import type { ParsedSvg, SvgRegion } from '../utils/svg/types';
 import { fillRegionShapes, traceRings, usePixels, useViewBoxUnits } from './canvasPaths';
 import type { CanvasFrame, SvgCanvasContext } from './canvasPaths';
-import { paintMetal, paintTones } from './paintTones';
+import { paintMetal, paintShading, paintTones } from './paintTones';
 import type { ToneMaskImages } from './paintTones';
 
 export type { SvgCanvasContext } from './canvasPaths';
@@ -30,7 +30,7 @@ export const SELECTION_OUTLINE_COLORS = { outer: '#16181d', inner: '#ffffff' } a
  * on a model: artwork below; each region's Base (or original fill; unpainted
  * regions stay clear), as bare metal for metallic paints; the Layer, Shade
  * and Highlight tones through the sheet's masks; the artwork above blended
- * in as shading; then an outline around the selected region. `scratch` is a
+ * in as shading (except over metal); then an outline around the selected region. `scratch` is a
  * second canvas of the same size for the metal and tone passes.
  */
 export function paintSvg(
@@ -55,13 +55,8 @@ export function paintSvg(
   }
   paintMetal(ctx, scratch, frame, tones);
   paintTones(ctx, scratch, frame, tones);
-  usePixels(ctx);
   if (above !== null) {
-    // Hard light: the artwork's greys darken (multiply) or lighten (screen) the paint
-    // instead of covering it with grey. Opaque black and white still draw as-is.
-    ctx.globalCompositeOperation = 'hard-light';
-    ctx.drawImage(above, 0, 0, width, height);
-    ctx.globalCompositeOperation = 'source-over';
+    paintShading(ctx, scratch, frame, tones, above);
   }
   const selected = svg.regions.find((region) => region.id === selectedRegionId);
   if (selected !== undefined) {
