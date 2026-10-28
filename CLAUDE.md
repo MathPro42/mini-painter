@@ -175,9 +175,10 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-10-28 | Metal is clipped to each shape in turn, never cut with `destination-in`          | Each `destination-in` draw erases all outside its shape, so regions of several shapes came out empty.       |
 | 2026-10-28 | Four paint steps per region; Layer/Shade/Highlight show through the sheet masks  | How models are painted. Supersedes the 2026-10-27 "legend swatches" and "one flat color per region" rows.   |
 | 2026-10-28 | Tone masks are browser-rendered images: the masked group refilled with white     | Full SVG mask behavior (units, transforms, embedded images) with no pixel reads of 2048 px textures.        |
-| 2026-10-28 | Metallic Base: the sheet's hidden `Met` picture, tinted with hard light          | Sheets ship a bare-metal picture behind an empty mask for this. It replaces the flat coat; tones go on top. |
+| 2026-10-28 | Metallic paints in any step: the sheet's `Met` picture in hard light, no shading | Sheets hide a bare-metal picture for this. Hard light picked by eye over luminosity and doubled hard light. |
 | 2026-10-28 | A paint is metallic when its palette group mentions "metal"                      | Sample palettes mark metals in their Type column. Colors from the picker are never metallic.                |
 | 2026-10-28 | Randomize: a random Base per region (washes skipped), other steps cleared        | Fast scheme ideas. Random tones on top would clash; one undo brings the previous scheme back.               |
 | 2026-10-28 | Own readers for `.xlsx`, `.xls` (BIFF8) and CSV; no spreadsheet library          | Real palette sheets are often legacy `.xls`, even named `.xlsx`. npm's SheetJS build is stale and flagged.  |
