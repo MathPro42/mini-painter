@@ -3,7 +3,7 @@ import { act } from 'preact/test-utils';
 import { describe, expect, it } from 'vitest';
 import { createAppState } from '../state/appState';
 import type { AppState } from '../state/appState';
-import { RegionPanel, UNPAINTED_INPUT_COLOR } from './RegionPanel';
+import { MULTI_SELECT_HINT, RegionPanel, UNPAINTED_INPUT_COLOR } from './RegionPanel';
 
 // "left" has an original fill; the selection-map region "cap" starts unpainted.
 const FILLED =
@@ -45,12 +45,95 @@ describe('RegionPanel', () => {
     const left = screen.getByRole('button', { name: 'left' });
 
     fireEvent.click(left);
-    expect(state.selectedRegionId.value).toBe('region-0');
+    expect(state.selectedRegionIds.value).toEqual(['region-0']);
     expect(left).toHaveAttribute('aria-pressed', 'true');
 
     fireEvent.click(left);
-    expect(state.selectedRegionId.value).toBeNull();
+    expect(state.selectedRegionIds.value).toEqual([]);
     expect(left).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('adds and removes regions with Shift, Ctrl or ⌘ held', () => {
+    const state = renderPanel();
+    const [left, right] = regionButtons();
+    if (left === undefined || right === undefined) {
+      throw new Error('expected two regions');
+    }
+    fireEvent.click(left);
+    fireEvent.click(right, { shiftKey: true });
+    expect(state.selectedRegionIds.value).toEqual(['region-0', 'region-1']);
+    expect(left).toHaveAttribute('aria-pressed', 'true');
+    expect(right).toHaveAttribute('aria-pressed', 'true');
+    expect(colorInput()).toHaveAccessibleName('Base color of 2 regions');
+
+    fireEvent.click(left, { ctrlKey: true });
+    expect(state.selectedRegionIds.value).toEqual(['region-1']);
+    fireEvent.click(left, { metaKey: true });
+    expect(state.selectedRegionIds.value).toEqual(['region-0', 'region-1']);
+
+    // A plain click goes back to that one region.
+    fireEvent.click(right);
+    expect(state.selectedRegionIds.value).toEqual(['region-1']);
+  });
+
+  it('adds and removes regions with each tap on a touch screen', () => {
+    const state = renderPanel();
+    const tap = (name: string): void => {
+      const button = screen.getByRole('button', { name });
+      fireEvent.pointerDown(button, { pointerType: 'touch' });
+      fireEvent.click(button);
+    };
+    tap('left');
+    tap('right');
+    expect(state.selectedRegionIds.value).toEqual(['region-0', 'region-1']);
+    tap('left');
+    expect(state.selectedRegionIds.value).toEqual(['region-1']);
+
+    // A mouse press after the taps selects only its region again.
+    const left = screen.getByRole('button', { name: 'left' });
+    fireEvent.pointerDown(left, { pointerType: 'mouse' });
+    fireEvent.click(left);
+    expect(state.selectedRegionIds.value).toEqual(['region-0']);
+  });
+
+  it('forgets a touch that turned into a scroll', () => {
+    const state = renderPanel();
+    const right = screen.getByRole('button', { name: 'right' });
+    fireEvent.click(screen.getByRole('button', { name: 'left' }));
+    fireEvent.pointerDown(right, { pointerType: 'touch' });
+    fireEvent.pointerCancel(right);
+    // Keyboard presses click without a pointer press, so they select only their region.
+    fireEvent.click(right);
+    expect(state.selectedRegionIds.value).toEqual(['region-1']);
+  });
+
+  it('selects every region, and clears the selection', () => {
+    const state = renderPanel();
+    const selectAll = screen.getByRole('button', { name: 'Select all' });
+    const clear = screen.getByRole('button', { name: 'Clear selection' });
+    expect(screen.getByText(MULTI_SELECT_HINT)).toBeInTheDocument();
+    expect(clear).toBeDisabled();
+
+    fireEvent.click(selectAll);
+    expect(state.selectedRegionIds.value).toEqual(['region-0', 'region-1']);
+    expect(selectAll).toBeDisabled();
+    expect(clear).toBeEnabled();
+
+    fireEvent.click(clear);
+    expect(state.selectedRegionIds.value).toEqual([]);
+    expect(colorInput()).toBeDisabled();
+  });
+
+  it('paints every selected region from the color picker', () => {
+    const state = renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'Select all' }));
+    // The regions' original fills differ, so the picker starts neutral.
+    expect(colorInput()).toHaveValue(UNPAINTED_INPUT_COLOR);
+    fireEvent.change(colorInput(), { target: { value: '#2e8b57' } });
+    expect([...state.regionPaints.value.values()].map((paint) => paint.base?.color)).toEqual([
+      '#2e8b57',
+      '#2e8b57',
+    ]);
   });
 
   it('follows selections made elsewhere, such as clicks in the viewport', async () => {
@@ -94,8 +177,8 @@ describe('RegionPanel', () => {
   it('names the paint each region has as its Base', async () => {
     const state = renderPanel();
     await act(() => {
-      state.setRegionStep('region-0', 'base', { color: '#c8553d', name: 'brick red' });
-      state.setRegionStep('region-1', 'base', { color: '#123456' });
+      state.setRegionsStep(['region-0'], 'base', { color: '#c8553d', name: 'brick red' });
+      state.setRegionsStep(['region-1'], 'base', { color: '#123456' });
     });
     expect(screen.getByRole('button', { name: 'left brick red' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'right' })).toBeInTheDocument();
@@ -119,7 +202,7 @@ describe('RegionPanel', () => {
   it('paints only the Base of plain drawings, without a step list', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'left' }));
-    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /^Paint steps/ })).not.toBeInTheDocument();
   });
 
   it('marks unpainted regions and offers a neutral starting color', () => {
@@ -134,7 +217,7 @@ describe('RegionPanel', () => {
   it('updates swatches when colors change', async () => {
     const state = renderPanel(UNPAINTED);
     await act(() => {
-      state.setRegionStep('region-0', 'base', { color: '#e0b13c' });
+      state.setRegionsStep(['region-0'], 'base', { color: '#e0b13c' });
     });
     const swatch = screen.getByRole('button', { name: 'cap' }).querySelector('.swatch');
     expect(swatch).not.toHaveClass('swatch--empty');

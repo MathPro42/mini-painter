@@ -4,13 +4,20 @@ import type { AppState } from '../state/appState';
 import { rgbaText } from '../utils/color';
 import { createRecipeBook } from '../utils/paint/recipePaint';
 import type { RecipeBook } from '../utils/paint/recipePaint';
-import { PAINT_STEP_LABELS, stepPaintFromPalette, TONE_STEPS } from '../utils/paint/regionPaint';
-import type { PaintStep, RegionPaint, StepPaint } from '../utils/paint/regionPaint';
+import {
+  PAINT_STEP_LABELS,
+  regionStepPaint,
+  sharedStepPaint,
+  stepPaintFromPalette,
+  TONE_STEPS,
+} from '../utils/paint/regionPaint';
+import type { PaintStep, StepPaint } from '../utils/paint/regionPaint';
 import type { PaletteColor } from '../utils/palette/paletteColor';
 import { filterPalette, groupPalette } from '../utils/palette/paletteList';
 import type { SvgRegion } from '../utils/svg/types';
 import { PaletteAddForm } from './PaletteAddForm';
 import { PaletteControls } from './PaletteControls';
+import { selectedRegions, selectionName } from './selection';
 import { swatchProps } from './swatchProps';
 import { useSignalValue } from './useSignalValue';
 
@@ -28,18 +35,20 @@ export const NOT_SAVED_WARNING =
 
 /**
  * The user's palettes: choose, import, export and delete them, filter the
- * one in use by name, add colors, and click one to paint the selected region.
+ * one in use by name, add colors, and click one to paint the selected regions.
  */
 export function PalettePanel({ state }: PalettePanelProps): JSX.Element {
   const palettes = useSignalValue(state.palettes);
   const active = useSignalValue(state.activePalette);
   const saved = useSignalValue(state.palettesSaved);
   const svg = useSignalValue(state.svg);
-  const selectedId = useSignalValue(state.selectedRegionId);
+  const selectedIds = useSignalValue(state.selectedRegionIds);
   const paints = useSignalValue(state.regionPaints);
   const step = useSignalValue(state.activeStep);
-  const region = svg?.regions.find((candidate) => candidate.id === selectedId) ?? null;
-  const current = region === null ? undefined : currentPaint(region, paints.get(region.id), step);
+  const regions = selectedRegions(svg, selectedIds);
+  const shared = sharedStepPaint(
+    regions.map((region) => regionStepPaint(region, paints.get(region.id), step)),
+  );
 
   return (
     <aside class="panel panel--start" aria-labelledby="palette-panel-title">
@@ -58,9 +67,9 @@ export function PalettePanel({ state }: PalettePanelProps): JSX.Element {
         <PaletteBrowser
           state={state}
           palette={active.colors}
-          region={region}
+          regions={regions}
           step={step}
-          current={current}
+          current={shared.mixed ? undefined : shared.paint}
         />
       )}
       <PaletteAddForm state={state} />
@@ -71,28 +80,12 @@ export function PalettePanel({ state }: PalettePanelProps): JSX.Element {
 interface PaletteBrowserProps {
   state: AppState;
   palette: readonly PaletteColor[];
-  /** The selected region, which a click paints. */
-  region: SvgRegion | null;
+  /** The selected regions, which a click paints. */
+  regions: readonly SvgRegion[];
   /** The step a click paints. */
   step: PaintStep;
-  /** What that step of the region is painted with now. */
+  /** What that step of every selected region is painted with now; none when they differ. */
   current: StepPaint | undefined;
-}
-
-/**
- * What a region's step is painted with: its paint, or for the Base of an
- * unpainted region, the drawing's own fill.
- */
-function currentPaint(
-  region: SvgRegion,
-  paint: RegionPaint | undefined,
-  step: PaintStep,
-): StepPaint | undefined {
-  const own = paint?.[step];
-  if (own !== undefined || step !== 'base' || region.fill === null) {
-    return own;
-  }
-  return { color: region.fill };
 }
 
 /** Whether a palette color is what a step is painted with. Unnamed paints match by color. */
@@ -106,7 +99,7 @@ function isCurrentColor(color: PaletteColor, current: StepPaint | undefined): bo
 function PaletteBrowser({
   state,
   palette,
-  region,
+  regions,
   step,
   current,
 }: PaletteBrowserProps): JSX.Element {
@@ -130,9 +123,9 @@ function PaletteBrowser({
         }}
       />
       <p class="panel__hint">
-        {region === null
+        {regions.length === 0
           ? 'Select a region, then pick a paint for it.'
-          : `Pick a ${PAINT_STEP_LABELS[step]} paint for ${region.name}.`}
+          : `Pick a ${PAINT_STEP_LABELS[step]} paint for ${selectionName(regions)}.`}
       </p>
       <div class="palette-list">
         {groups.map(({ group, colors }) => (
@@ -144,7 +137,7 @@ function PaletteBrowser({
                   key={`${color.name}\n${color.color}`}
                   state={state}
                   color={color}
-                  region={region}
+                  regionIds={regions.map((region) => region.id)}
                   step={step}
                   book={book}
                   useRecipes={useRecipes}
@@ -163,35 +156,33 @@ function PaletteBrowser({
 interface PaletteItemProps {
   state: AppState;
   color: PaletteColor;
-  region: SvgRegion | null;
+  /** The regions a click paints; empty disables the paint. */
+  regionIds: readonly string[];
   step: PaintStep;
   /** Follows the palette's recipes. */
   book: RecipeBook;
   /** Whether a Base pick also paints the tones of the color's recipe. */
   useRecipes: boolean;
-  /** Whether the selected region's step already has this paint. */
+  /** Whether every selected region's step already has this paint. */
   isCurrent: boolean;
 }
 
 function PaletteItem(props: PaletteItemProps): JSX.Element {
-  const { state, color, region, step, book, isCurrent } = props;
+  const { state, color, regionIds, step, book, isCurrent } = props;
   return (
     <li class="palette-item">
       <button
         type="button"
         class="palette-item__paint"
         title={colorTitle(color, book)}
-        disabled={region === null}
+        disabled={regionIds.length === 0}
         aria-current={isCurrent}
         onClick={() => {
-          if (region === null) {
-            return;
-          }
           // A recipe replaces the whole region, so tones from an earlier Base don't linger.
           if (step === 'base' && props.useRecipes && color.recipe !== undefined) {
-            state.setRegionPaint(region.id, book(color));
+            state.setRegionsPaint(regionIds, book(color));
           } else {
-            state.setRegionStep(region.id, step, stepPaintFromPalette(color));
+            state.setRegionsStep(regionIds, step, stepPaintFromPalette(color));
           }
         }}
       >

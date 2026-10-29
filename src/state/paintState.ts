@@ -13,11 +13,13 @@ import type { PaintStep, RegionPaint, StepPaint } from '../utils/paint/regionPai
 import type { PaletteColor } from '../utils/palette/paletteColor';
 import { parseSvg } from '../utils/svg/parseSvg';
 import type { ParsedSvg } from '../utils/svg/types';
+import { createRegionSelection, requireRegion } from './regionSelection';
+import type { RegionSelection } from './regionSelection';
 
 type RegionPaints = ReadonlyMap<string, RegionPaint>;
 
-/** The uploaded drawing, the paints on it, and their undo history. */
-export interface PaintState {
+/** The uploaded drawing, the selected regions, the paints on it, and their undo history. */
+export interface PaintState extends RegionSelection {
   /** The uploaded SVG split into paintable regions, or `null` before any upload. */
   readonly svg: ReadonlySignal<ParsedSvg | null>;
   /**
@@ -25,8 +27,6 @@ export interface PaintState {
    * keeps its original fill.
    */
   readonly regionPaints: ReadonlySignal<RegionPaints>;
-  /** Id of the region being painted, or `null`. */
-  readonly selectedRegionId: ReadonlySignal<string | null>;
   /** The step palette picks and the color picker apply to. */
   readonly activeStep: ReadonlySignal<PaintStep>;
   /** Whether Base picks and Randomize also use the tones a paint's recipe names. On at first. */
@@ -38,29 +38,28 @@ export interface PaintState {
    * has nothing paintable.
    */
   loadSvg: (source: string) => void;
-  /** Selects a region, or clears the selection with `null`. Throws a RangeError for unknown ids. */
-  selectRegion: (id: string | null) => void;
   /** Chooses the step to paint. Not an undo step. Throws a RangeError for unknown steps. */
   setActiveStep: (step: PaintStep) => void;
   /**
-   * Sets one step of a region's paint, or clears it with `null`, as one undo
-   * step. Setting what is already there is not a step. Throws a RangeError
-   * for unknown ids or invalid colors.
+   * Sets one step of each listed region's paint, or clears it with `null`,
+   * as one undo step however many regions there are. Setting what is already
+   * there is not a step. Throws a RangeError, changing nothing, for unknown
+   * ids or invalid colors.
    */
-  setRegionStep: (id: string, step: PaintStep, paint: StepPaint | null) => void;
+  setRegionsStep: (ids: readonly string[], step: PaintStep, paint: StepPaint | null) => void;
   /**
-   * Replaces all of a region's paints, as one undo step; an empty paint
-   * clears the region. Throws like setRegionStep.
+   * Replaces all of each listed region's paints, as one undo step; an empty
+   * paint clears the regions. Throws like setRegionsStep.
    */
-  setRegionPaint: (id: string, paint: RegionPaint) => void;
+  setRegionsPaint: (ids: readonly string[], paint: RegionPaint) => void;
   /** Turns recipes on or off for Base picks and Randomize. Not an undo step. */
   setUseRecipes: (on: boolean) => void;
   /**
    * Shows a paint without recording an undo step, for live feedback while
-   * the user is still choosing. The next setRegionStep records the change;
-   * undo discards it. Throws like setRegionStep.
+   * the user is still choosing. The next setRegionsStep records the change;
+   * undo discards it. Throws like setRegionsStep.
    */
-  previewRegionStep: (id: string, step: PaintStep, paint: StepPaint) => void;
+  previewRegionsStep: (ids: readonly string[], step: PaintStep, paint: StepPaint) => void;
   /**
    * Gives every region a random Base from `colors`, plus that paint's recipe
    * tones when useRecipes is on, and clears its other steps, as one undo
@@ -79,22 +78,15 @@ export interface PaintState {
 /** Creates the drawing and painting part of the app state. */
 export function createPaintState(): PaintState {
   const svg = signal<ParsedSvg | null>(null);
-  const selectedRegionId = signal<string | null>(null);
+  const { clear: clearSelection, ...selection } = createRegionSelection(svg);
   const activeStep = signal<PaintStep>('base');
   const useRecipes = signal(true);
   const paints = createPaintHistory();
 
-  const requireRegion = (id: string): string => {
-    if (svg.peek()?.regions.some((region) => region.id === id) !== true) {
-      throw new RangeError(`No region with id "${id}" in the current SVG`);
-    }
-    return id;
-  };
-
   return {
     svg,
     regionPaints: paints.regionPaints,
-    selectedRegionId,
+    ...selection,
     activeStep,
     useRecipes,
     loadSvg: (source) => {
@@ -103,12 +95,9 @@ export function createPaintState(): PaintState {
       batch(() => {
         svg.value = parsed;
         paints.reset();
-        selectedRegionId.value = null;
+        clearSelection();
         activeStep.value = 'base';
       });
-    },
-    selectRegion: (id) => {
-      selectedRegionId.value = id === null ? null : requireRegion(id);
     },
     setActiveStep: (step) => {
       if (!PAINT_STEPS.includes(step)) {
@@ -116,7 +105,7 @@ export function createPaintState(): PaintState {
       }
       activeStep.value = step;
     },
-    ...createPaintActions(paints, requireRegion),
+    ...createPaintActions(paints, (id) => requireRegion(svg.peek(), id)),
     setUseRecipes: (on) => {
       useRecipes.value = on;
     },
@@ -134,39 +123,52 @@ export function createPaintState(): PaintState {
   };
 }
 
-type PaintActions = Pick<PaintState, 'setRegionStep' | 'setRegionPaint' | 'previewRegionStep'>;
+type PaintActions = Pick<PaintState, 'setRegionsStep' | 'setRegionsPaint' | 'previewRegionsStep'>;
 
-/** The ways to paint a region; `requireRegion` throws for ids not in the drawing. */
+/** The ways to paint regions; `requireRegion` throws for ids not in the drawing. */
 function createPaintActions(
   paints: PaintHistory,
   requireRegion: (id: string) => string,
 ): PaintActions {
-  const withRegionStep = (id: string, step: PaintStep, paint: StepPaint | null): RegionPaints => {
+  const withRegionsStep = (
+    ids: readonly string[],
+    step: PaintStep,
+    paint: StepPaint | null,
+  ): RegionPaints => {
+    const parsed = paint && parseStepPaint(paint);
     const current = paints.regionPaints.peek();
-    const region = withStep(current.get(id), step, paint && parseStepPaint(paint));
-    return withRegion(current, requireRegion(id), region);
+    return withRegions(current, ids.map(requireRegion), (id) =>
+      withStep(current.get(id), step, parsed),
+    );
   };
   return {
-    setRegionStep: (id, step, paint) => {
-      paints.commit(withRegionStep(id, step, paint));
+    setRegionsStep: (ids, step, paint) => {
+      paints.commit(withRegionsStep(ids, step, paint));
     },
-    setRegionPaint: (id, paint) => {
+    setRegionsPaint: (ids, paint) => {
       const region = parseRegionPaint(paint);
-      paints.commit(withRegion(paints.regionPaints.peek(), requireRegion(id), region));
+      paints.commit(withRegions(paints.regionPaints.peek(), ids.map(requireRegion), () => region));
     },
-    previewRegionStep: (id, step, paint) => {
-      paints.preview(withRegionStep(id, step, paint));
+    previewRegionsStep: (ids, step, paint) => {
+      paints.preview(withRegionsStep(ids, step, paint));
     },
   };
 }
 
-/** A copy of `paints` with region `id` set to `region`; an empty region is dropped. */
-function withRegion(paints: RegionPaints, id: string, region: RegionPaint): RegionPaints {
+/** A copy of `paints` with each of `ids` set to `paintOf(id)`; empty regions are dropped. */
+function withRegions(
+  paints: RegionPaints,
+  ids: readonly string[],
+  paintOf: (id: string) => RegionPaint,
+): RegionPaints {
   const next = new Map(paints);
-  if (Object.keys(region).length === 0) {
-    next.delete(id);
-  } else {
-    next.set(id, region);
+  for (const id of ids) {
+    const region = paintOf(id);
+    if (Object.keys(region).length === 0) {
+      next.delete(id);
+    } else {
+      next.set(id, region);
+    }
   }
   return next;
 }

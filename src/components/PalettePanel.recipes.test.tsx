@@ -38,11 +38,21 @@ const paintButton = (name: string): HTMLElement => screen.getByRole('button', { 
 describe('PalettePanel recipes', () => {
   it('paints a Base with its recipe tones as one undo step, replacing earlier tones', () => {
     const state = renderPanel();
-    state.setRegionStep('region-0', 'highlight', { color: '#ffffff' });
+    state.setRegionsStep(['region-0'], 'highlight', { color: '#ffffff' });
     fireEvent.click(paintButton('brick red'));
     expect(state.regionPaints.value.get('region-0')).toEqual(BRICK_RECIPE);
     state.undo();
     expect(state.regionPaints.value.get('region-0')).toEqual({ highlight: { color: '#ffffff' } });
+  });
+
+  it('paints the recipe on every selected region', async () => {
+    const state = renderPanel();
+    await act(() => {
+      state.toggleRegion('region-1');
+    });
+    fireEvent.click(paintButton('brick red'));
+    expect(state.regionPaints.value.get('region-0')).toEqual(BRICK_RECIPE);
+    expect(state.regionPaints.value.get('region-1')).toEqual(BRICK_RECIPE);
   });
 
   it('paints only the Base while recipes are off', async () => {

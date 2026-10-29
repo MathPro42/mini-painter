@@ -28,14 +28,14 @@ export function createSvgLayer(
   const stopSync = effect(() => {
     const svg = state.svg.value;
     const paints = state.regionPaints.value;
-    const selectedRegionId = state.selectedRegionId.value;
+    const selectedRegionIds = state.selectedRegionIds.value;
     if (svg !== shown) {
       shown = svg;
       removeModel(scene, model);
       model = svg === null ? null : addModel(scene, svg);
       onDrawingChange(svg !== null);
     }
-    model?.paint(paints, selectedRegionId);
+    model?.paint(paints, selectedRegionIds);
   });
 
   return {

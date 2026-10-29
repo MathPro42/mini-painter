@@ -139,7 +139,7 @@ describe('PalettePanel', () => {
     const state = renderPanel();
     await act(() => {
       state.selectRegion('region-0');
-      state.setRegionStep('region-0', 'base', { color: '#2e8b57', name: 'other green' });
+      state.setRegionsStep(['region-0'], 'base', { color: '#2e8b57', name: 'other green' });
     });
     expect(paintButton('sea green')).toHaveAttribute('aria-current', 'false');
   });
@@ -151,6 +151,35 @@ describe('PalettePanel', () => {
     });
     expect(paintButton('brick red')).toHaveAttribute('aria-current', 'true');
     expect(paintButton('sea green')).toHaveAttribute('aria-current', 'false');
+  });
+
+  it('paints every selected region with a clicked color, as one undoable step', async () => {
+    const state = renderPanel();
+    await act(() => {
+      state.selectAllRegions();
+    });
+    expect(screen.getByText('Pick a Base paint for 2 regions.')).toBeInTheDocument();
+    fireEvent.click(paintButton('sea green'));
+    expect([...state.regionPaints.value.values()].map((paint) => paint.base?.name)).toEqual([
+      'sea green',
+      'sea green',
+    ]);
+    expect(paintButton('sea green')).toHaveAttribute('aria-current', 'true');
+    state.undo();
+    expect(state.regionPaints.value.size).toBe(0);
+  });
+
+  it('marks no color as current while the selected regions differ', async () => {
+    const state = renderPanel();
+    await act(() => {
+      state.selectRegion('region-0');
+    });
+    expect(paintButton('brick red')).toHaveAttribute('aria-current', 'true');
+    await act(() => {
+      state.toggleRegion('region-1');
+    });
+    // "left" keeps its brick red fill; "right" has no fill.
+    expect(paintButton('brick red')).toHaveAttribute('aria-current', 'false');
   });
 
   it('filters colors by name', () => {

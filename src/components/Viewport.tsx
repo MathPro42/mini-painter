@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { createRenderer } from '../rendering/createRenderer';
 import type { RendererHandle } from '../rendering/createRenderer';
 import type { AppState } from '../state/appState';
+import { isToggleClick } from './selection';
 
 interface ViewportProps {
   state: AppState;
@@ -16,7 +17,8 @@ export const CLICK_TOLERANCE_PX = 5;
 
 /**
  * Hosts the 3D canvas and ties the renderer's lifetime to this component.
- * A click (not a drag, which moves the camera) selects the region under it.
+ * A click (not a drag, which moves the camera) selects the region under it;
+ * with Shift, Ctrl or ⌘ held, it adds that region to the selection or removes it.
  */
 export function Viewport({ state }: ViewportProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -57,8 +59,14 @@ export function Viewport({ state }: ViewportProps): JSX.Element {
     const dragged =
       press !== null &&
       Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_TOLERANCE_PX;
-    if (handle !== null && !dragged) {
-      state.selectRegion(handle.pickRegion(event.clientX, event.clientY));
+    if (handle === null || dragged) {
+      return;
+    }
+    const picked = handle.pickRegion(event.clientX, event.clientY);
+    if (!isToggleClick(event)) {
+      state.selectRegion(picked);
+    } else if (picked !== null) {
+      state.toggleRegion(picked);
     }
   };
 
