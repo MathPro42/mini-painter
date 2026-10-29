@@ -39,7 +39,7 @@ const paint = (overrides: Partial<SvgPaintInput> = {}): string[] => {
   paintSvg(ctx, scratch, 200, 100, {
     svg: SVG,
     paints: new Map(),
-    selectedRegionId: null,
+    selectedRegionIds: [],
     below: null,
     above: null,
     toneMasks: NO_TONE_MASK_IMAGES,
@@ -114,7 +114,7 @@ describe('paintSvg', () => {
   });
 
   it('blends the artwork above in hard light, and only that artwork', () => {
-    const log = paint({ below: BELOW, above: ABOVE, selectedRegionId: 'region-1' });
+    const log = paint({ below: BELOW, above: ABOVE, selectedRegionIds: ['region-1'] });
     const order = log
       .filter((entry) => /^(image|composite|stroke) /.test(entry))
       .map((entry) => entry.replace(/^stroke .*/, 'stroke'));
@@ -130,13 +130,20 @@ describe('paintSvg', () => {
   });
 
   it('outlines the selected region last, with a constant on-screen width', () => {
-    const log = paint({ selectedRegionId: 'region-1', above: ABOVE });
+    const log = paint({ selectedRegionIds: ['region-1'], above: ABOVE });
     const strokes = log.filter((entry) => entry.startsWith('stroke'));
     expect(strokes).toEqual([
       `stroke ${SELECTION_OUTLINE_COLORS.outer} ${String(SELECTION_OUTLINE_PX / 10)}`,
       `stroke ${SELECTION_OUTLINE_COLORS.inner} ${String(SELECTION_OUTLINE_PX / 3 / 10)}`,
     ]);
     expect(log.indexOf('image above')).toBeLessThan(log.indexOf(strokes[0] ?? ''));
+  });
+
+  it('outlines every selected region', () => {
+    const log = paint({ selectedRegionIds: ['region-0', 'region-1'] });
+    const strokes = log.filter((entry) => entry.startsWith('stroke'));
+    expect(strokes).toHaveLength(4);
+    expect(paint({}).some((entry) => entry.startsWith('stroke'))).toBe(false);
   });
 
   it('draws no outline without a selection', () => {

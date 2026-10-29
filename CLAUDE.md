@@ -92,18 +92,22 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   so scene logic is unit-testable in Node without a GPU.
 - SVG flow: `state.loadSvg()` parses with `utils/svg/parseSvg.ts` (regions, viewBox, artwork,
   and for paint-scheme sheets the tone masks and metal picture from `utils/svg/toneMasks.ts`).
-  `rendering/svgLayer.ts` follows `svg`, `regionPaints` and `selectedRegionId` and repaints
+  `rendering/svgLayer.ts` follows `svg`, `regionPaints` and `selectedRegionIds` and repaints
   the plane's canvas texture: `paintSvg.ts` draws the base coats, then `paintTones.ts` the
   metal and the Layer/Shade/Highlight tones on a scratch canvas (washes multiplied in), then
-  the shading artwork. Clicks go UI → rendering → state: `Viewport` calls
-  `handle.pickRegion(x, y)`, then `state.selectRegion()`. Rendering never writes state.
+  the shading artwork, then an outline around each selected region. Clicks go UI → rendering →
+  state: `Viewport` calls `handle.pickRegion(x, y)`, then `state.selectRegion()` (or
+  `toggleRegion()` with Shift, Ctrl or ⌘ held). Rendering never writes state.
 - Components read signals with `components/useSignalValue.ts`, which re-renders on change.
 - `AppState` is composed from `state/paintState.ts` (drawing, per-region paints for the four
-  steps in `utils/paint/regionPaint.ts`, the active step, undo history) and
-  `state/paletteState.ts` (named palettes, one in use). Undo covers region paints only. Every
-  `setRegionStep` or `randomizeRegions` is one step; `previewRegionStep` shows a paint without
-  a step (the color picker previews on `input` and commits on `change`). `loadSvg` clears the
-  history and goes back to the Base step.
+  steps in `utils/paint/regionPaint.ts`, the active step, undo history),
+  `state/regionSelection.ts` (the selected regions, any number of them) and
+  `state/paletteState.ts` (named palettes, one in use). Paint actions take a list of region
+  ids, and the UI passes the whole selection. Undo covers region paints only. Every
+  `setRegionsStep`, `setRegionsPaint` or `randomizeRegions` is one step, however many regions
+  it paints; `previewRegionsStep` shows a paint without a step (the color picker previews on
+  `input` and commits on `change`). `loadSvg` clears the history and the selection and goes
+  back to the Base step.
 - Palette files: `utils/palette/paletteFile.ts` turns the first sheet into colors (header
   detection, `rgb()`/hex parsing, `rgba()` alpha marking washes) and writes exports.
   `utils/palette/paletteRecipe.ts` reads and writes the Id and Layer/Shade/Highlight recipe
@@ -178,6 +182,8 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-10-29 | Select several regions: Shift/Ctrl/⌘-click toggles; on touch, list taps toggle   | Painters give many parts the same paint. Touch has no modifier keys; a tap on the drawing still picks one.  |
+| 2026-10-29 | A step the selected regions differ on shows the hatched "none" swatch, "mixed"   | Owner's call. The color picker starts grey then. Painting several regions at once is one undo step.         |
 | 2026-10-28 | Recipes: Layer/Shade/Highlight cells resolve at import by Id, else by name       | Stored as color keys, so they survive saves and exports. A Base with a recipe replaces the region's tones.  |
 | 2026-10-28 | Washes (`rgba()` palette colors) multiply the paint under them through the mask  | At their .6 alpha they looked faint. Multiply keeps depth and the paint's hue. Picked by eye over opaque.   |
 | 2026-10-28 | Metal is clipped to each shape in turn, never cut with `destination-in`          | Each `destination-in` draw erases all outside its shape, so regions of several shapes came out empty.       |

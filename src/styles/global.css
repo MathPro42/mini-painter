@@ -318,6 +318,14 @@ body,
   cursor: not-allowed;
 }
 
+/* Select all / Clear selection, above the region list. */
+.region-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0 1rem 0.375rem;
+}
+
 .region-list {
   flex: 1;
   margin: 0;

@@ -70,7 +70,36 @@ describe('Viewport', () => {
     fireEvent.click(canvas, { clientX: 41, clientY: 30 });
 
     expect(handle.pickRegion).toHaveBeenCalledExactlyOnceWith(41, 30);
-    expect(state.selectedRegionId.value).toBe('region-1');
+    expect(state.selectedRegionIds.value).toEqual(['region-1']);
+  });
+
+  it('adds or removes the region under a Shift, Ctrl or ⌘ click', () => {
+    createRendererMock.mockReturnValue(fakeHandle('region-1'));
+    const state = createAppState();
+    state.loadSvg(DRAWING);
+    state.selectRegion('region-0');
+    render(<Viewport state={state} />);
+
+    const canvas = screen.getByRole('img');
+    fireEvent.click(canvas, { shiftKey: true });
+    expect(state.selectedRegionIds.value).toEqual(['region-0', 'region-1']);
+    fireEvent.click(canvas, { ctrlKey: true });
+    expect(state.selectedRegionIds.value).toEqual(['region-0']);
+    fireEvent.click(canvas, { metaKey: true });
+    expect(state.selectedRegionIds.value).toEqual(['region-0', 'region-1']);
+    fireEvent.click(canvas);
+    expect(state.selectedRegionIds.value).toEqual(['region-1']);
+  });
+
+  it('keeps the selection when a Shift click hits no region', () => {
+    createRendererMock.mockReturnValue(fakeHandle(null));
+    const state = createAppState();
+    state.loadSvg(DRAWING);
+    state.selectAllRegions();
+    render(<Viewport state={state} />);
+
+    fireEvent.click(screen.getByRole('img'), { shiftKey: true });
+    expect(state.selectedRegionIds.value).toEqual(['region-0', 'region-1']);
   });
 
   it('clears the selection when a click hits no region', () => {
@@ -81,7 +110,7 @@ describe('Viewport', () => {
     render(<Viewport state={state} />);
 
     fireEvent.click(screen.getByRole('img'), { clientX: 5, clientY: 5 });
-    expect(state.selectedRegionId.value).toBeNull();
+    expect(state.selectedRegionIds.value).toEqual([]);
   });
 
   it('ignores the click that ends an orbit drag', () => {
@@ -96,6 +125,6 @@ describe('Viewport', () => {
     fireEvent.click(canvas, { clientX: CLICK_TOLERANCE_PX + 1, clientY: 0 });
 
     expect(handle.pickRegion).not.toHaveBeenCalled();
-    expect(state.selectedRegionId.value).toBeNull();
+    expect(state.selectedRegionIds.value).toEqual([]);
   });
 });

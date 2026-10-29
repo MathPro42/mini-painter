@@ -1,9 +1,8 @@
 import type { JSX } from 'preact';
 import type { AppState } from '../state/appState';
-import type { StepPaint } from '../utils/paint/regionPaint';
-import type { SvgRegion } from '../utils/svg/types';
 import { PaintStepPicker } from './PaintStepPicker';
-import { swatchProps } from './swatchProps';
+import { RegionList } from './RegionList';
+import { selectedRegions } from './selection';
 import { useSignalValue } from './useSignalValue';
 
 interface RegionPanelProps {
@@ -12,22 +11,22 @@ interface RegionPanelProps {
 
 export { UNPAINTED_INPUT_COLOR } from './PaintStepPicker';
 
+export const MULTI_SELECT_HINT =
+  'Shift- or Ctrl/⌘-click to select several regions. On a touch screen, tap them in the list.';
+
 /**
- * Lists the drawing's regions and paints the selected one, step by step.
+ * Lists the drawing's regions and paints the selected ones, step by step.
  * Selecting here and clicking the drawing in the viewport share the same
  * state. A region with a named Base paint shows that name.
  */
 export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
   const svg = useSignalValue(state.svg);
-  const paints = useSignalValue(state.regionPaints);
-  const selectedId = useSignalValue(state.selectedRegionId);
+  const selectedIds = useSignalValue(state.selectedRegionIds);
   const palette = useSignalValue(state.activePalette);
   if (svg === null) {
     return null;
   }
-  const baseOf = (region: SvgRegion): StepPaint | null =>
-    paints.get(region.id)?.base ?? (region.fill === null ? null : { color: region.fill });
-  const selected = svg.regions.find((region) => region.id === selectedId) ?? null;
+  const selected = selectedRegions(svg, selectedIds);
   const colors = palette?.colors ?? [];
 
   return (
@@ -48,39 +47,31 @@ export function RegionPanel({ state }: RegionPanelProps): JSX.Element | null {
           Randomize
         </button>
       </div>
-      <PaintStepPicker state={state} region={selected} />
-      <ul class="region-list">
-        {svg.regions.map((region) => (
-          <li key={region.id}>
-            <button
-              type="button"
-              class="region-list__item"
-              aria-pressed={region.id === selectedId}
-              onClick={() => {
-                state.selectRegion(region.id === selectedId ? null : region.id);
-              }}
-            >
-              <span {...swatchProps(baseOf(region))} aria-hidden="true" />
-              <RegionText name={region.name} paint={paints.get(region.id)?.base?.name} />
-            </button>
-          </li>
-        ))}
-      </ul>
+      <PaintStepPicker state={state} regions={selected} />
+      <div class="region-selection" role="group" aria-label="Selection">
+        <button
+          type="button"
+          class="button button--small"
+          disabled={selected.length === svg.regions.length}
+          onClick={() => {
+            state.selectAllRegions();
+          }}
+        >
+          Select all
+        </button>
+        <button
+          type="button"
+          class="button button--small"
+          disabled={selected.length === 0}
+          onClick={() => {
+            state.selectRegion(null);
+          }}
+        >
+          Clear selection
+        </button>
+      </div>
+      <p class="panel__hint">{MULTI_SELECT_HINT}</p>
+      <RegionList state={state} regions={svg.regions} selectedIds={selectedIds} />
     </aside>
-  );
-}
-
-function RegionText({ name, paint }: { name: string; paint: string | undefined }): JSX.Element {
-  return (
-    <span class="region-list__text">
-      <span class="region-list__name">{name}</span>
-      {paint !== undefined && (
-        // The space keeps screen readers from running the two names together.
-        <>
-          {' '}
-          <span class="region-list__paint">{paint}</span>
-        </>
-      )}
-    </span>
   );
 }

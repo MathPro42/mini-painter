@@ -1,5 +1,6 @@
 import { normalizeOpacity, parseHexColor } from '../color';
 import type { PaletteColor } from '../palette/paletteColor';
+import type { SvgRegion } from '../svg/types';
 import { PAINT_STEPS } from './paintSteps';
 import type { PaintStep } from './paintSteps';
 
@@ -100,4 +101,32 @@ export function sameRegionPaints(
 ): boolean {
   const ids = new Set([...a.keys(), ...b.keys()]);
   return [...ids].every((id) => sameRegionPaint(a.get(id), b.get(id)));
+}
+
+/**
+ * What a region's step is painted with: its own paint, or for the Base of an
+ * unpainted region, the drawing's original fill.
+ */
+export function regionStepPaint(
+  region: Pick<SvgRegion, 'fill'>,
+  paint: RegionPaint | undefined,
+  step: PaintStep,
+): StepPaint | undefined {
+  const own = paint?.[step];
+  if (own !== undefined || step !== 'base' || region.fill === null) {
+    return own;
+  }
+  return { color: region.fill };
+}
+
+/** The paint several regions share on one step (`undefined`: none has any), or that they differ. */
+export type SharedStepPaint =
+  { readonly mixed: false; readonly paint: StepPaint | undefined } | { readonly mixed: true };
+
+/** Whether `paints`, one per selected region, are all the same paint. An empty list isn't mixed. */
+export function sharedStepPaint(paints: readonly (StepPaint | undefined)[]): SharedStepPaint {
+  const [first] = paints;
+  return paints.every((paint) => sameStepPaint(paint, first))
+    ? { mixed: false, paint: first }
+    : { mixed: true };
 }

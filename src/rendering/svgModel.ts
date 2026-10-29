@@ -11,7 +11,7 @@ import type { SvgPlane } from './svgPlane';
 export interface SvgModel {
   readonly plane: SvgPlane;
   /** Repaints the texture with these paints and this selection. */
-  paint: (paints: ReadonlyMap<string, RegionPaint>, selectedRegionId: string | null) => void;
+  paint: (paints: ReadonlyMap<string, RegionPaint>, selectedRegionIds: readonly string[]) => void;
   /** Frees the texture, canvases and plane. Images that finish loading later are ignored. */
   dispose: () => void;
 }
@@ -49,8 +49,8 @@ export function createSvgModel(svg: ParsedSvg): SvgModel {
 
   return {
     plane,
-    paint: (paints, selectedRegionId) => {
-      painter.update({ paints, selectedRegionId });
+    paint: (paints, selectedRegionIds) => {
+      painter.update({ paints, selectedRegionIds });
     },
     dispose: () => {
       disposed = true;
@@ -78,7 +78,7 @@ function createPainter(svg: ParsedSvg, width: number, height: number): Painter {
   const scratch = createCanvas(width, height);
   const texture = new CanvasTexture(main.canvas);
   texture.colorSpace = SRGBColorSpace;
-  let input: SvgPaintInput = { svg, paints: new Map(), selectedRegionId: null, ...NO_IMAGES };
+  let input: SvgPaintInput = { svg, paints: new Map(), selectedRegionIds: [], ...NO_IMAGES };
   const update = (changes: Partial<SvgPaintInput>): void => {
     input = { ...input, ...changes };
     paintSvg(main.ctx, scratch.ctx, width, height, input);

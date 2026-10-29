@@ -18,7 +18,8 @@ export interface SvgPaintInput {
   readonly svg: ParsedSvg;
   /** User-applied paints by region id; regions without a Base keep their original fills. */
   readonly paints: ReadonlyMap<string, RegionPaint>;
-  readonly selectedRegionId: string | null;
+  /** Regions to outline, by id. */
+  readonly selectedRegionIds: readonly string[];
   /** Rendered artwork, or `null` while it loads or when the drawing has none. */
   readonly below: CanvasImageSource | null;
   readonly above: CanvasImageSource | null;
@@ -28,7 +29,7 @@ export interface SvgPaintInput {
   readonly metal: CanvasImageSource | null;
 }
 
-/** Width of the selected region's outline, in texture pixels. */
+/** Width of a selected region's outline, in texture pixels. */
 export const SELECTION_OUTLINE_PX = 6;
 export const SELECTION_OUTLINE_COLORS = { outer: '#16181d', inner: '#ffffff' } as const;
 
@@ -37,8 +38,9 @@ export const SELECTION_OUTLINE_COLORS = { outer: '#16181d', inner: '#ffffff' } a
  * on a model: artwork below; each region's Base (or original fill; unpainted
  * regions stay clear), as bare metal for metallic paints; the Layer, Shade
  * and Highlight tones through the sheet's masks; the artwork above blended
- * in as shading (except over metal); then an outline around the selected region. `scratch` is a
- * second canvas of the same size for the metal and tone passes.
+ * in as shading (except over metal); then an outline around each selected
+ * region. `scratch` is a second canvas of the same size for the metal and
+ * tone passes.
  */
 export function paintSvg(
   ctx: SvgCanvasContext,
@@ -47,7 +49,7 @@ export function paintSvg(
   height: number,
   input: SvgPaintInput,
 ): void {
-  const { svg, paints, selectedRegionId, below, above } = input;
+  const { svg, paints, selectedRegionIds, below, above } = input;
   const frame: CanvasFrame = { width, height, viewBox: svg.viewBox };
   const tones = { regions: svg.regions, paints, toneMasks: input.toneMasks, metal: input.metal };
 
@@ -65,10 +67,13 @@ export function paintSvg(
   if (above !== null) {
     paintShading(ctx, scratch, frame, tones, above);
   }
-  const selected = svg.regions.find((region) => region.id === selectedRegionId);
-  if (selected !== undefined) {
+  const selected = svg.regions.filter((region) => selectedRegionIds.includes(region.id));
+  if (selected.length > 0) {
     useViewBoxUnits(ctx, frame);
-    outlineRegion(ctx, selected, Math.min(width / svg.viewBox.width, height / svg.viewBox.height));
+    const pixelsPerUnit = Math.min(width / svg.viewBox.width, height / svg.viewBox.height);
+    for (const region of selected) {
+      outlineRegion(ctx, region, pixelsPerUnit);
+    }
   }
 }
 

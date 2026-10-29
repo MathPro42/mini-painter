@@ -6,19 +6,19 @@ import type { AppState } from '../state/appState';
 import selectionMapSvg from '../utils/svg/fixtures/selection-map.svg?raw';
 import toneMasksSvg from '../utils/svg/fixtures/tone-masks.svg?raw';
 import {
+  MIXED_STEP_TEXT,
   PaintStepPicker,
   RECIPE_TOGGLE_LABEL,
   UNAVAILABLE_STEP_TEXT,
   UNPAINTED_INPUT_COLOR,
 } from './PaintStepPicker';
 
-/** Renders the picker for the drawing's first region ("left" in the tone-mask sheet). */
-const renderPicker = (svg = toneMasksSvg): AppState => {
+/** Renders the picker for the drawing's first `count` regions ("left" first in the tone-mask sheet). */
+const renderPicker = (svg = toneMasksSvg, count = 1): AppState => {
   const state = createAppState();
   state.loadSvg(svg);
-  const region = state.svg.value?.regions[0] ?? null;
-  state.selectRegion(region?.id ?? null);
-  render(<PaintStepPicker state={state} region={region} />);
+  const regions = state.svg.value?.regions.slice(0, count) ?? [];
+  render(<PaintStepPicker state={state} regions={regions} />);
   return state;
 };
 
@@ -58,7 +58,7 @@ describe('PaintStepPicker', () => {
   it('shows paint names, and clears a step', async () => {
     const state = renderPicker();
     await act(() => {
-      state.setRegionStep('region-0', 'highlight', { color: '#f0e0d0', name: 'bone' });
+      state.setRegionsStep(['region-0'], 'highlight', { color: '#f0e0d0', name: 'bone' });
     });
     expect(stepButton('Highlight')).toHaveTextContent('Highlight bone');
     fireEvent.click(screen.getByRole('button', { name: 'Clear Highlight' }));
@@ -79,8 +79,7 @@ describe('PaintStepPicker', () => {
       '<svg viewBox="0 0 10 10"><defs><mask id="m"/></defs><g mask="url(#m)"><g id="Shade"/></g>' +
         '<g id="selectionMap"><g id="part"><rect width="10" height="10" fill="#c8553d"/></g></g></svg>',
     );
-    const region = state.svg.value?.regions[0] ?? null;
-    render(<PaintStepPicker state={state} region={region} />);
+    render(<PaintStepPicker state={state} regions={state.svg.value?.regions ?? []} />);
     // Selection-map shapes are invisible hit areas, so even a filled one starts unpainted.
     expect(colorInput()).toHaveValue(UNPAINTED_INPUT_COLOR);
     await act(() => {
@@ -108,7 +107,7 @@ describe('PaintStepPicker', () => {
   it('shows a see-through step paint over a checkerboard', async () => {
     const state = renderPicker();
     await act(() => {
-      state.setRegionStep('region-0', 'shade', { color: '#5c4033', opacity: 0.6 });
+      state.setRegionsStep(['region-0'], 'shade', { color: '#5c4033', opacity: 0.6 });
     });
     expect(stepButton('Shade').querySelector('.swatch')).toHaveClass('swatch--see-through');
   });
@@ -116,8 +115,61 @@ describe('PaintStepPicker', () => {
   it('asks for a region first', () => {
     const state = createAppState();
     state.loadSvg(toneMasksSvg);
-    render(<PaintStepPicker state={state} region={null} />);
+    render(<PaintStepPicker state={state} regions={[]} />);
     expect(screen.queryByRole('group')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Select a region to paint it')).toBeDisabled();
+  });
+
+  describe('with several regions', () => {
+    it('names how many regions it paints', () => {
+      renderPicker(toneMasksSvg, 2);
+      expect(steps()).toHaveAccessibleName('Paint steps of 2 regions');
+      expect(colorInput()).toHaveAccessibleName('Base color of 2 regions');
+    });
+
+    it('shows a shared paint, and "mixed" with the hatched swatch where the regions differ', async () => {
+      const state = renderPicker(toneMasksSvg, 2);
+      await act(() => {
+        state.setRegionsStep(['region-0', 'region-1'], 'base', {
+          color: '#c8553d',
+          name: 'brick red',
+        });
+        state.setRegionsStep(['region-0'], 'shade', { color: '#5c4033' });
+      });
+      expect(stepButton('Base')).toHaveTextContent('Base brick red');
+      expect(colorInput()).toHaveValue('#c8553d');
+      expect(stepButton('Shade')).toHaveTextContent(`Shade ${MIXED_STEP_TEXT}`);
+      expect(stepButton('Shade').querySelector('.swatch')).toHaveClass('swatch--empty');
+      expect(stepButton('Layer')).toHaveTextContent('Layer —');
+
+      fireEvent.click(stepButton('Shade'));
+      expect(colorInput()).toHaveValue(UNPAINTED_INPUT_COLOR);
+    });
+
+    it('clears a mixed step on every region as one undo step', async () => {
+      const state = renderPicker(toneMasksSvg, 2);
+      await act(() => {
+        state.setRegionsStep(['region-0'], 'shade', { color: '#5c4033' });
+        state.setRegionsStep(['region-1'], 'shade', { color: '#111111' });
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Clear Shade' }));
+      expect(state.regionPaints.value.size).toBe(0);
+      state.undo();
+      expect(state.regionPaints.value.size).toBe(2);
+    });
+
+    it('paints every region from the color picker as one undo step', () => {
+      const state = renderPicker(toneMasksSvg, 2);
+      fireEvent.input(colorInput(), { target: { value: '#2e8b57' } });
+      fireEvent.change(colorInput(), { target: { value: '#2e8b57' } });
+      expect(state.regionPaints.value).toEqual(
+        new Map([
+          ['region-0', { base: { color: '#2e8b57' } }],
+          ['region-1', { base: { color: '#2e8b57' } }],
+        ]),
+      );
+      state.undo();
+      expect(state.regionPaints.value.size).toBe(0);
+    });
   });
 });

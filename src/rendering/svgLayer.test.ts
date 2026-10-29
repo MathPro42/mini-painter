@@ -60,7 +60,7 @@ describe('createSvgLayer', () => {
     expect(models).toHaveLength(1);
     expect(models[0]?.svg).toBe(state.svg.value);
     expect(scene.children).toContain(models[0]?.plane.mesh);
-    expect(models[0]?.paint).toHaveBeenLastCalledWith(new Map(), null);
+    expect(models[0]?.paint).toHaveBeenLastCalledWith(new Map(), []);
     expect(onDrawingChange).toHaveBeenCalledExactlyOnceWith(true);
   });
 
@@ -68,13 +68,14 @@ describe('createSvgLayer', () => {
     const state = createAppState();
     createSvgLayer(new Scene(), state, vi.fn());
     state.loadSvg(DRAWING);
-    state.setRegionStep('region-0', 'shade', { color: '#c8553d' });
+    state.setRegionsStep(['region-0'], 'shade', { color: '#c8553d' });
     state.selectRegion('region-1');
+    state.toggleRegion('region-0');
 
     expect(models).toHaveLength(1);
     expect(models[0]?.paint).toHaveBeenLastCalledWith(
       new Map([['region-0', { shade: { color: '#c8553d' } }]]),
-      'region-1',
+      ['region-0', 'region-1'],
     );
   });
 

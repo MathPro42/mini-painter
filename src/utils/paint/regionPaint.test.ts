@@ -5,9 +5,11 @@ import {
   isWash,
   PAINT_STEPS,
   parseStepPaint,
+  regionStepPaint,
   sameRegionPaint,
   sameRegionPaints,
   sameStepPaint,
+  sharedStepPaint,
   stepPaintFromPalette,
   withStep,
 } from './regionPaint';
@@ -108,5 +110,29 @@ describe('sameStepPaint, sameRegionPaint and sameRegionPaints', () => {
     expect(sameRegionPaints(a, new Map([['region-0', { base: { ...BRICK } }]]))).toBe(true);
     expect(sameRegionPaints(a, new Map())).toBe(false);
     expect(sameRegionPaints(new Map([['region-1', {}]]), new Map())).toBe(true);
+  });
+});
+
+describe('regionStepPaint', () => {
+  it('is the step’s paint, or the original fill for an unpainted Base', () => {
+    const filled = { fill: '#3d7ac8' };
+    expect(regionStepPaint(filled, { base: BRICK }, 'base')).toEqual(BRICK);
+    expect(regionStepPaint(filled, undefined, 'base')).toEqual({ color: '#3d7ac8' });
+    expect(regionStepPaint(filled, { base: BRICK }, 'shade')).toBeUndefined();
+    expect(regionStepPaint({ fill: null }, undefined, 'base')).toBeUndefined();
+  });
+});
+
+describe('sharedStepPaint', () => {
+  it('is the paint every region has, or none when no region has one', () => {
+    expect(sharedStepPaint([])).toEqual({ mixed: false, paint: undefined });
+    expect(sharedStepPaint([undefined, undefined])).toEqual({ mixed: false, paint: undefined });
+    expect(sharedStepPaint([BRICK, { ...BRICK }])).toEqual({ mixed: false, paint: BRICK });
+  });
+
+  it('is mixed when the regions differ, painted or not', () => {
+    expect(sharedStepPaint([BRICK, INK])).toEqual({ mixed: true });
+    expect(sharedStepPaint([BRICK, undefined])).toEqual({ mixed: true });
+    expect(sharedStepPaint([undefined, BRICK])).toEqual({ mixed: true });
   });
 });

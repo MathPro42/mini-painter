@@ -20,7 +20,7 @@ const redoButton = (): HTMLElement => screen.getByRole('button', { name: 'Redo' 
 
 const paint = async (state: AppState, color: string): Promise<void> => {
   await act(() => {
-    state.setRegionStep('region-0', 'base', { color: color });
+    state.setRegionsStep(['region-0'], 'base', { color: color });
   });
 };
 
