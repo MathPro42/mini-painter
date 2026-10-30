@@ -2,6 +2,39 @@ import type { SvgCanvasContext } from '../rendering/canvasPaths';
 
 const style = (value: unknown): string => (typeof value === 'string' ? value : 'gradient');
 
+/** The fill rule of a `fill(rule)` or `fill(path, rule)` call. */
+const ruleOf = (first: unknown, second: unknown): string =>
+  String(typeof first === 'string' ? first : second);
+
+/**
+ * A stand-in for the browser's Path2D, missing in Node. It keeps its commands
+ * as text ("M10,0 L20,0 Z"), so tests can check the paths that get built.
+ * Install it with `vi.stubGlobal('Path2D', RecordingPath)`.
+ */
+export class RecordingPath {
+  readonly commands: string[] = [];
+
+  moveTo(x: number, y: number): void {
+    this.commands.push(`M${String(x)},${String(y)}`);
+  }
+
+  lineTo(x: number, y: number): void {
+    this.commands.push(`L${String(x)},${String(y)}`);
+  }
+
+  closePath(): void {
+    this.commands.push('Z');
+  }
+
+  addPath(path: RecordingPath): void {
+    this.commands.push(...path.commands);
+  }
+
+  toString(): string {
+    return this.commands.join(' ');
+  }
+}
+
 export interface RecordingOptions {
   /** Shared log, so two canvases can record into one sequence. */
   readonly log?: string[];
@@ -40,15 +73,12 @@ export function recordingContext(options: RecordingOptions): {
     },
     save: () => record('save'),
     restore: () => record('restore'),
-    clip: (rule?: unknown) => record(`clip ${String(rule)}`),
+    clip: (first?: unknown, second?: unknown) => record(`clip ${ruleOf(first, second)}`),
     setTransform: (...args: unknown[]) => record(`transform ${args.join(',')}`),
     clearRect: () => record('clear'),
     drawImage: (image: unknown) => record(`image ${options.imageNames.get(image) ?? 'unknown'}`),
-    beginPath: () => record('begin'),
-    moveTo: (x: number, y: number) => record(`move ${String(x)},${String(y)}`),
-    lineTo: () => record('line'),
-    closePath: () => record('close'),
-    fill: (rule?: unknown) => record(`fill ${style(ctx.fillStyle)} ${String(rule)}`),
+    fill: (first?: unknown, second?: unknown) =>
+      record(`fill ${style(ctx.fillStyle)} ${ruleOf(first, second)}`),
     stroke: () => record(`stroke ${style(ctx.strokeStyle)} ${String(ctx.lineWidth)}`),
     setLineDash: () => record('dash'),
   };
