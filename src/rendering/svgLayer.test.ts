@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAppState } from '../state/appState';
 import type { ParsedSvg } from '../utils/svg/types';
 import { createSvgLayer } from './svgLayer';
+import type { SvgLayerCallbacks } from './svgLayer';
 import { createSvgModel } from './svgModel';
 import type { SvgModel } from './svgModel';
 
@@ -16,8 +17,14 @@ const DRAWING =
 interface FakeModel extends SvgModel {
   readonly svg: ParsedSvg;
   readonly paint: ReturnType<typeof vi.fn<SvgModel['paint']>>;
+  readonly flush: ReturnType<typeof vi.fn<SvgModel['flush']>>;
   readonly dispose: ReturnType<typeof vi.fn<SvgModel['dispose']>>;
 }
+
+const callbacks = (onDrawingChange = vi.fn(), onChange = vi.fn()): SvgLayerCallbacks => ({
+  onDrawingChange,
+  onChange,
+});
 
 describe('createSvgLayer', () => {
   let models: FakeModel[];
@@ -30,10 +37,12 @@ describe('createSvgLayer', () => {
         svg,
         plane: {
           mesh: new Mesh(),
+          overlay: new Mesh(),
           pickRegion: vi.fn(() => 'region-1'),
           dispose: vi.fn(),
         },
         paint: vi.fn(),
+        flush: vi.fn(),
         dispose: vi.fn(),
       };
       models.push(model);
@@ -44,17 +53,18 @@ describe('createSvgLayer', () => {
   it('does nothing until a drawing is loaded', () => {
     const scene = new Scene();
     const onDrawingChange = vi.fn();
-    const layer = createSvgLayer(scene, createAppState(), onDrawingChange);
+    const layer = createSvgLayer(scene, createAppState(), callbacks(onDrawingChange));
     expect(createSvgModelMock).not.toHaveBeenCalled();
     expect(onDrawingChange).not.toHaveBeenCalled();
     expect(layer.pickRegion(new Raycaster())).toBeNull();
+    layer.flush();
   });
 
   it('adds a painted plane for a loaded drawing and reports it', () => {
     const scene = new Scene();
     const state = createAppState();
     const onDrawingChange = vi.fn();
-    createSvgLayer(scene, state, onDrawingChange);
+    createSvgLayer(scene, state, callbacks(onDrawingChange));
     state.loadSvg(DRAWING);
 
     expect(models).toHaveLength(1);
@@ -66,7 +76,7 @@ describe('createSvgLayer', () => {
 
   it('repaints on paint and selection changes without rebuilding', () => {
     const state = createAppState();
-    createSvgLayer(new Scene(), state, vi.fn());
+    createSvgLayer(new Scene(), state, callbacks());
     state.loadSvg(DRAWING);
     state.setRegionsStep(['region-0'], 'shade', { color: '#c8553d' });
     state.selectRegion('region-1');
@@ -83,7 +93,7 @@ describe('createSvgLayer', () => {
     const scene = new Scene();
     const state = createAppState();
     const onDrawingChange = vi.fn();
-    createSvgLayer(scene, state, onDrawingChange);
+    createSvgLayer(scene, state, callbacks(onDrawingChange));
     state.loadSvg(DRAWING);
     state.loadSvg(DRAWING);
 
@@ -94,9 +104,19 @@ describe('createSvgLayer', () => {
     expect(onDrawingChange).toHaveBeenCalledTimes(2);
   });
 
+  it('hands the model the change callback, and flushes it on request', () => {
+    const state = createAppState();
+    const onChange = vi.fn();
+    const layer = createSvgLayer(new Scene(), state, callbacks(vi.fn(), onChange));
+    state.loadSvg(DRAWING);
+    expect(createSvgModelMock).toHaveBeenCalledWith(state.svg.value, onChange);
+    layer.flush();
+    expect(models[0]?.flush).toHaveBeenCalledOnce();
+  });
+
   it('picks through the current plane', () => {
     const state = createAppState();
-    const layer = createSvgLayer(new Scene(), state, vi.fn());
+    const layer = createSvgLayer(new Scene(), state, callbacks());
     state.loadSvg(DRAWING);
     const raycaster = new Raycaster();
     expect(layer.pickRegion(raycaster)).toBe('region-1');
@@ -106,7 +126,7 @@ describe('createSvgLayer', () => {
   it('dispose removes the plane and stops following state', () => {
     const scene = new Scene();
     const state = createAppState();
-    const layer = createSvgLayer(scene, state, vi.fn());
+    const layer = createSvgLayer(scene, state, callbacks());
     state.loadSvg(DRAWING);
     layer.dispose();
 

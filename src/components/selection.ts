@@ -2,7 +2,8 @@ import type { ParsedSvg, SvgRegion } from '../utils/svg/types';
 
 /** The drawing's regions with these ids, in drawing order. */
 export function selectedRegions(svg: ParsedSvg | null, ids: readonly string[]): SvgRegion[] {
-  return svg?.regions.filter((region) => ids.includes(region.id)) ?? [];
+  const wanted = new Set(ids);
+  return svg?.regions.filter((region) => wanted.has(region.id)) ?? [];
 }
 
 /** How labels name the selection: a lone region by its name, several by their count. */

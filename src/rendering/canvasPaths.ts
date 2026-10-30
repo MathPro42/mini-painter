@@ -1,5 +1,5 @@
 import type { Ring } from '../utils/svg/geometry';
-import type { SvgRegion, ViewBox } from '../utils/svg/types';
+import type { SvgRegion, SvgShape, ViewBox } from '../utils/svg/types';
 
 /** The slice of the canvas 2D API that painting uses, so tests can pass a recording fake. */
 export type SvgCanvasContext = Pick<
@@ -11,10 +11,6 @@ export type SvgCanvasContext = Pick<
   | 'setTransform'
   | 'clearRect'
   | 'drawImage'
-  | 'beginPath'
-  | 'moveTo'
-  | 'lineTo'
-  | 'closePath'
   | 'fill'
   | 'stroke'
   | 'setLineDash'
@@ -52,13 +48,40 @@ export function resetCanvas(ctx: SvgCanvasContext, frame: CanvasFrame): void {
   ctx.clearRect(0, 0, frame.width, frame.height);
 }
 
+// Paths are built once per shape and reused by every repaint: tracing a detailed sheet
+// point by point on each fill, clip and stroke cost more than the drawing itself.
+const shapePaths = new WeakMap<SvgShape, Path2D>();
+const regionPaths = new WeakMap<SvgRegion, Path2D>();
+
+/** The shape's outline as a path in viewBox units, built on first use. */
+export function shapePath(shape: SvgShape): Path2D {
+  let path = shapePaths.get(shape);
+  if (path === undefined) {
+    path = new Path2D();
+    traceRings(path, shape.rings);
+    shapePaths.set(shape, path);
+  }
+  return path;
+}
+
+/** The outlines of every shape of the region as one path in viewBox units, built on first use. */
+export function regionPath(region: SvgRegion): Path2D {
+  let path = regionPaths.get(region);
+  if (path === undefined) {
+    path = new Path2D();
+    for (const shape of region.shapes) {
+      path.addPath(shapePath(shape));
+    }
+    regionPaths.set(region, path);
+  }
+  return path;
+}
+
 /** Fills every shape of `region` with `color`, in the current transform. */
 export function fillRegionShapes(ctx: SvgCanvasContext, region: SvgRegion, color: string): void {
+  ctx.fillStyle = color;
   for (const shape of region.shapes) {
-    ctx.beginPath();
-    traceRings(ctx, shape.rings);
-    ctx.fillStyle = color;
-    ctx.fill(shape.fillRule);
+    ctx.fill(shapePath(shape), shape.fillRule);
   }
 }
 
@@ -78,9 +101,7 @@ export function drawInsideShapes(
     for (const shape of region.shapes) {
       ctx.save();
       useViewBoxUnits(ctx, frame);
-      ctx.beginPath();
-      traceRings(ctx, shape.rings);
-      ctx.clip(shape.fillRule);
+      ctx.clip(shapePath(shape), shape.fillRule);
       usePixels(ctx);
       draw();
       ctx.restore();
@@ -103,15 +124,15 @@ export function drawBlended(
   ctx.globalCompositeOperation = 'source-over';
 }
 
-export function traceRings(ctx: SvgCanvasContext, rings: readonly Ring[]): void {
+function traceRings(path: Path2D, rings: readonly Ring[]): void {
   for (const ring of rings) {
     ring.forEach(({ x, y }, index) => {
       if (index === 0) {
-        ctx.moveTo(x, y);
+        path.moveTo(x, y);
       } else {
-        ctx.lineTo(x, y);
+        path.lineTo(x, y);
       }
     });
-    ctx.closePath();
+    path.closePath();
   }
 }

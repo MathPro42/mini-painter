@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { RegionPaint } from '../utils/paint/regionPaint';
 import { parseSvg } from '../utils/svg/parseSvg';
-import { recordingContext } from '../test/recordingCanvas';
+import { RecordingPath, recordingContext } from '../test/recordingCanvas';
 import type { CanvasFrame } from './canvasPaths';
 import {
   METAL_BLEND,
@@ -12,6 +12,8 @@ import {
   paintTones,
 } from './paintTones';
 import type { ToneInput } from './paintTones';
+
+vi.stubGlobal('Path2D', RecordingPath);
 
 const ABOVE = {} as HTMLImageElement;
 const LAYER = {} as HTMLImageElement;

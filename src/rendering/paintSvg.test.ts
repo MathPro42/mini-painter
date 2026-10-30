@@ -1,9 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseSvg } from '../utils/svg/parseSvg';
 import type { SvgPaintInput } from './paintSvg';
-import { paintSvg, SELECTION_OUTLINE_COLORS, SELECTION_OUTLINE_PX } from './paintSvg';
-import { recordingContext } from '../test/recordingCanvas';
+import {
+  paintSelection,
+  paintSvg,
+  SELECTION_OUTLINE_COLORS,
+  SELECTION_OUTLINE_PX,
+} from './paintSvg';
+import { RecordingPath, recordingContext } from '../test/recordingCanvas';
 import { NO_TONE_MASK_IMAGES } from './paintTones';
+
+vi.stubGlobal('Path2D', RecordingPath);
 
 const BELOW = {} as HTMLImageElement;
 const ABOVE = {} as HTMLImageElement;
@@ -39,7 +46,6 @@ const paint = (overrides: Partial<SvgPaintInput> = {}): string[] => {
   paintSvg(ctx, scratch, 200, 100, {
     svg: SVG,
     paints: new Map(),
-    selectedRegionIds: [],
     below: null,
     above: null,
     toneMasks: NO_TONE_MASK_IMAGES,
@@ -65,7 +71,6 @@ describe('paintSvg', () => {
       'fill #3d7ac8 nonzero',
       'fill #2e8b57 evenodd',
     ]);
-    expect(log).toContain('move 10,0');
   });
 
   it('paints every shape of a region in its assigned color', () => {
@@ -114,39 +119,18 @@ describe('paintSvg', () => {
   });
 
   it('blends the artwork above in hard light, and only that artwork', () => {
-    const log = paint({ below: BELOW, above: ABOVE, selectedRegionIds: ['region-1'] });
-    const order = log
-      .filter((entry) => /^(image|composite|stroke) /.test(entry))
-      .map((entry) => entry.replace(/^stroke .*/, 'stroke'));
+    const log = paint({ below: BELOW, above: ABOVE });
+    const order = log.filter((entry) => /^(image|composite) /.test(entry));
     expect(order).toEqual([
       'image below',
       'composite hard-light',
       'image above',
       'composite source-over',
-      'stroke',
-      'stroke',
     ]);
     expect(paint({ below: BELOW }).some((entry) => entry.startsWith('composite'))).toBe(false);
   });
 
-  it('outlines the selected region last, with a constant on-screen width', () => {
-    const log = paint({ selectedRegionIds: ['region-1'], above: ABOVE });
-    const strokes = log.filter((entry) => entry.startsWith('stroke'));
-    expect(strokes).toEqual([
-      `stroke ${SELECTION_OUTLINE_COLORS.outer} ${String(SELECTION_OUTLINE_PX / 10)}`,
-      `stroke ${SELECTION_OUTLINE_COLORS.inner} ${String(SELECTION_OUTLINE_PX / 3 / 10)}`,
-    ]);
-    expect(log.indexOf('image above')).toBeLessThan(log.indexOf(strokes[0] ?? ''));
-  });
-
-  it('outlines every selected region', () => {
-    const log = paint({ selectedRegionIds: ['region-0', 'region-1'] });
-    const strokes = log.filter((entry) => entry.startsWith('stroke'));
-    expect(strokes).toHaveLength(4);
-    expect(paint({}).some((entry) => entry.startsWith('stroke'))).toBe(false);
-  });
-
-  it('draws no outline without a selection', () => {
+  it('draws no outlines: the selection has its own overlay', () => {
     expect(paint().some((entry) => entry.startsWith('stroke'))).toBe(false);
   });
 
@@ -194,5 +178,27 @@ describe('paintSvg', () => {
       paints: new Map([['region-1', { base: { color: '#b27f34', metallic: true } }]]),
     });
     expect(log.some((entry) => entry.startsWith('scratch: '))).toBe(false);
+  });
+});
+
+describe('paintSelection', () => {
+  const select = (ids: string[]): string[] => {
+    const { ctx, log } = recordingContext({ imageNames: IMAGE_NAMES, canvas: SCRATCH_CANVAS });
+    paintSelection(ctx, 200, 100, SVG, new Set(ids));
+    return log;
+  };
+
+  it('clears the overlay, then outlines a region with a constant on-screen width', () => {
+    const log = select(['region-1']);
+    expect(log.slice(0, 3)).toEqual(['transform 1,0,0,1,0,0', 'composite source-over', 'clear']);
+    expect(log.filter((entry) => entry.startsWith('stroke'))).toEqual([
+      `stroke ${SELECTION_OUTLINE_COLORS.outer} ${String(SELECTION_OUTLINE_PX / 10)}`,
+      `stroke ${SELECTION_OUTLINE_COLORS.inner} ${String(SELECTION_OUTLINE_PX / 3 / 10)}`,
+    ]);
+  });
+
+  it('outlines every selected region, and only clears without a selection', () => {
+    expect(select(['region-0', 'region-1']).filter((e) => e.startsWith('stroke'))).toHaveLength(4);
+    expect(select([])).toEqual(['transform 1,0,0,1,0,0', 'composite source-over', 'clear']);
   });
 });

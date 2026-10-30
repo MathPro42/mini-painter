@@ -92,10 +92,13 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   so scene logic is unit-testable in Node without a GPU.
 - SVG flow: `state.loadSvg()` parses with `utils/svg/parseSvg.ts` (regions, viewBox, artwork,
   and for paint-scheme sheets the tone masks and metal picture from `utils/svg/toneMasks.ts`).
-  `rendering/svgLayer.ts` follows `svg`, `regionPaints` and `selectedRegionIds` and repaints
-  the plane's canvas texture: `paintSvg.ts` draws the base coats, then `paintTones.ts` the
-  metal and the Layer/Shade/Highlight tones on a scratch canvas (washes multiplied in), then
-  the shading artwork, then an outline around each selected region. Clicks go UI → rendering →
+  `rendering/svgLayer.ts` follows `svg`, `regionPaints` and `selectedRegionIds` and marks
+  the plane's canvas textures for a repaint, done by `flush()` right before the next frame:
+  `paintSvg.ts` draws the base coats, then `paintTones.ts` the metal and the
+  Layer/Shade/Highlight tones on a scratch canvas (washes multiplied in), then the shading
+  artwork. `paintSelection` outlines the selected regions on a separate overlay texture.
+  `createRenderer` draws frames on demand only. Shape paths are `Path2D`s cached in
+  `canvasPaths.ts`; Node tests stub `Path2D` with `RecordingPath`. Clicks go UI → rendering →
   state: `Viewport` calls `handle.pickRegion(x, y)`, then `state.selectRegion()` (or
   `toggleRegion()` with Shift, Ctrl or ⌘ held). Rendering never writes state.
 - Components read signals with `components/useSignalValue.ts`, which re-renders on change.
@@ -182,6 +185,10 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-10-30 | Long lists memoize their rows with `components/memo.ts`, not `preact/compat`     | A paint change re-rendered every palette and region row. compat's `memo` would install its global hooks.    |
+| 2026-10-30 | Render on demand; the loop runs every frame only while the cube spins            | A drawing nobody touches cost ~60 frames/s of GPU work. Camera moves, repaints and resizes ask for frames.  |
+| 2026-10-30 | Repaints wait for the next frame; selection outlines are an overlay texture      | A color drag fires several `input`s per frame, each a repaint. Selecting repainted every paint layer.       |
+| 2026-10-30 | A `Path2D` per shape, built once, for every fill, clip and stroke                | Re-tracing every point on each pass of a repaint was the biggest canvas cost on detailed sheets.            |
 | 2026-10-29 | Select several regions: Shift/Ctrl/⌘-click toggles; on touch, list taps toggle   | Painters give many parts the same paint. Touch has no modifier keys; a tap on the drawing still picks one.  |
 | 2026-10-29 | A step the selected regions differ on shows the hatched "none" swatch, "mixed"   | Owner's call. The color picker starts grey then. Painting several regions at once is one undo step.         |
 | 2026-10-28 | Recipes: Layer/Shade/Highlight cells resolve at import by Id, else by name       | Stored as color keys, so they survive saves and exports. A Base with a recipe replaces the region's tones.  |

@@ -8,19 +8,28 @@ import type { SvgModel } from './svgModel';
 export interface SvgLayer {
   /** Id of the region under the ray, or `null`. */
   pickRegion: (raycaster: Raycaster) => string | null;
+  /** Repaints the drawing's textures if paints or the selection changed. Call before rendering. */
+  flush: () => void;
   /** Stops syncing and frees the current drawing's resources. */
   dispose: () => void;
 }
 
+export interface SvgLayerCallbacks {
+  /** Runs each time a drawing appears, is replaced or goes away. */
+  readonly onDrawingChange: (hasDrawing: boolean) => void;
+  /** Runs when the drawing needs a repaint: the owner should flush and render a frame. */
+  readonly onChange: () => void;
+}
+
 /**
  * Keeps the scene's SVG plane in sync with state: builds a plane for each
- * uploaded drawing, and repaints it when paints or the selection change.
- * `onDrawingChange` runs each time a drawing appears, is replaced or goes away.
+ * uploaded drawing, and marks it for a repaint when paints or the selection
+ * change. The repaint itself waits for flush, once per rendered frame.
  */
 export function createSvgLayer(
   scene: Scene,
   state: AppState,
-  onDrawingChange: (hasDrawing: boolean) => void,
+  callbacks: SvgLayerCallbacks,
 ): SvgLayer {
   let model: SvgModel | null = null;
   let shown: ParsedSvg | null = null;
@@ -32,14 +41,17 @@ export function createSvgLayer(
     if (svg !== shown) {
       shown = svg;
       removeModel(scene, model);
-      model = svg === null ? null : addModel(scene, svg);
-      onDrawingChange(svg !== null);
+      model = svg === null ? null : addModel(scene, svg, callbacks.onChange);
+      callbacks.onDrawingChange(svg !== null);
     }
     model?.paint(paints, selectedRegionIds);
   });
 
   return {
     pickRegion: (raycaster) => model?.plane.pickRegion(raycaster) ?? null,
+    flush: () => {
+      model?.flush();
+    },
     dispose: () => {
       stopSync();
       removeModel(scene, model);
@@ -48,8 +60,8 @@ export function createSvgLayer(
   };
 }
 
-function addModel(scene: Scene, svg: ParsedSvg): SvgModel {
-  const model = createSvgModel(svg);
+function addModel(scene: Scene, svg: ParsedSvg, onChange: () => void): SvgModel {
+  const model = createSvgModel(svg, onChange);
   scene.add(model.plane.mesh);
   return model;
 }
