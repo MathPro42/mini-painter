@@ -185,6 +185,7 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-10-30 | Long lists memoize their rows with `components/memo.ts`, not `preact/compat`     | A paint change re-rendered every palette and region row. compat's `memo` would install its global hooks.    |
 | 2026-10-30 | Render on demand; the loop runs every frame only while the cube spins            | A drawing nobody touches cost ~60 frames/s of GPU work. Camera moves, repaints and resizes ask for frames.  |
 | 2026-10-30 | Repaints wait for the next frame; selection outlines are an overlay texture      | A color drag fires several `input`s per frame, each a repaint. Selecting repainted every paint layer.       |
 | 2026-10-30 | A `Path2D` per shape, built once, for every fill, clip and stroke                | Re-tracing every point on each pass of a repaint was the biggest canvas cost on detailed sheets.            |

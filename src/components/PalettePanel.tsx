@@ -16,6 +16,7 @@ import type { PaletteColor } from '../utils/palette/paletteColor';
 import { filterPalette, groupPalette } from '../utils/palette/paletteList';
 import type { SvgRegion } from '../utils/svg/types';
 import { PaletteAddForm } from './PaletteAddForm';
+import { memo } from './memo';
 import { PaletteControls } from './PaletteControls';
 import { selectedRegions, selectionName } from './selection';
 import { swatchProps } from './swatchProps';
@@ -68,6 +69,7 @@ export function PalettePanel({ state }: PalettePanelProps): JSX.Element {
           state={state}
           palette={active.colors}
           regions={regions}
+          regionIds={selectedIds}
           step={step}
           current={shared.mixed ? undefined : shared.paint}
         />
@@ -82,6 +84,8 @@ interface PaletteBrowserProps {
   palette: readonly PaletteColor[];
   /** The selected regions, which a click paints. */
   regions: readonly SvgRegion[];
+  /** Their ids, the same array until the selection changes, so items can skip renders. */
+  regionIds: readonly string[];
   /** The step a click paints. */
   step: PaintStep;
   /** What that step of every selected region is painted with now; none when they differ. */
@@ -100,14 +104,16 @@ function PaletteBrowser({
   state,
   palette,
   regions,
+  regionIds,
   step,
   current,
 }: PaletteBrowserProps): JSX.Element {
   const [query, setQuery] = useState('');
   const useRecipes = useSignalValue(state.useRecipes);
   const book = useMemo(() => createRecipeBook(palette), [palette]);
-  const visible = filterPalette(palette, query);
-  const groups = groupPalette(visible);
+  // Painting re-renders the browser; the list only changes with the palette or the filter.
+  const visible = useMemo(() => filterPalette(palette, query), [palette, query]);
+  const groups = useMemo(() => groupPalette(visible), [visible]);
   const showHeadings = groups.some((group) => group.group !== null);
 
   return (
@@ -137,7 +143,7 @@ function PaletteBrowser({
                   key={`${color.name}\n${color.color}`}
                   state={state}
                   color={color}
-                  regionIds={regions.map((region) => region.id)}
+                  regionIds={regionIds}
                   step={step}
                   book={book}
                   useRecipes={useRecipes}
@@ -167,7 +173,8 @@ interface PaletteItemProps {
   isCurrent: boolean;
 }
 
-function PaletteItem(props: PaletteItemProps): JSX.Element {
+/** One color of the palette; it renders again only when one of its props changes. */
+const PaletteItem = memo(function PaletteItem(props: PaletteItemProps): JSX.Element {
   const { state, color, regionIds, step, book, isCurrent } = props;
   return (
     <li class="palette-item">
@@ -202,7 +209,7 @@ function PaletteItem(props: PaletteItemProps): JSX.Element {
       </button>
     </li>
   );
-}
+});
 
 /** A color's tooltip: its value (with alpha for washes), then the tones of its recipe. */
 function colorTitle(color: PaletteColor, book: RecipeBook): string {

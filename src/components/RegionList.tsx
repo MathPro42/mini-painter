@@ -1,8 +1,9 @@
 import type { JSX } from 'preact';
-import { useRef } from 'preact/hooks';
+import { useCallback, useMemo, useRef } from 'preact/hooks';
 import type { AppState } from '../state/appState';
-import type { StepPaint } from '../utils/paint/regionPaint';
+import type { RegionPaint, StepPaint } from '../utils/paint/regionPaint';
 import type { SvgRegion } from '../utils/svg/types';
+import { memo } from './memo';
 import { isToggleClick } from './selection';
 import { swatchProps } from './swatchProps';
 import { useSignalValue } from './useSignalValue';
@@ -21,21 +22,24 @@ interface RegionListProps {
  */
 export function RegionList({ state, regions, selectedIds }: RegionListProps): JSX.Element {
   const paints = useSignalValue(state.regionPaints);
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   // The pointer type of the press that ends in the next click; keyboard presses have none.
   const pressRef = useRef<string | null>(null);
-  const baseOf = (region: SvgRegion): StepPaint | null =>
-    paints.get(region.id)?.base ?? (region.fill === null ? null : { color: region.fill });
-
-  const onClick = (id: string, event: MouseEvent): void => {
-    const pointer = pressRef.current;
-    pressRef.current = null;
-    if (pointer === 'touch' || pointer === 'pen' || isToggleClick(event)) {
-      state.toggleRegion(id);
-    } else {
-      const isOnlySelected = selectedIds.length === 1 && selectedIds[0] === id;
+  // Reads the selection when clicked, so the handler stays the same and items can skip renders.
+  const onPress = useCallback(
+    (id: string, event: MouseEvent): void => {
+      const pointer = pressRef.current;
+      pressRef.current = null;
+      if (pointer === 'touch' || pointer === 'pen' || isToggleClick(event)) {
+        state.toggleRegion(id);
+        return;
+      }
+      const current = state.selectedRegionIds.peek();
+      const isOnlySelected = current.length === 1 && current[0] === id;
       state.selectRegion(isOnlySelected ? null : id);
-    }
-  };
+    },
+    [state],
+  );
 
   return (
     <ul
@@ -48,23 +52,51 @@ export function RegionList({ state, regions, selectedIds }: RegionListProps): JS
       }}
     >
       {regions.map((region) => (
-        <li key={region.id}>
-          <button
-            type="button"
-            class="region-list__item"
-            aria-pressed={selectedIds.includes(region.id)}
-            onClick={(event) => {
-              onClick(region.id, event);
-            }}
-          >
-            <span {...swatchProps(baseOf(region))} aria-hidden="true" />
-            <RegionText name={region.name} paint={paints.get(region.id)?.base?.name} />
-          </button>
-        </li>
+        <RegionItem
+          key={region.id}
+          region={region}
+          paint={paints.get(region.id)}
+          isSelected={selected.has(region.id)}
+          onPress={onPress}
+        />
       ))}
     </ul>
   );
 }
+
+interface RegionItemProps {
+  region: SvgRegion;
+  /** The paints the user applied; the same object until this region's paint changes. */
+  paint: RegionPaint | undefined;
+  isSelected: boolean;
+  onPress: (id: string, event: MouseEvent) => void;
+}
+
+/** One region with its Base; it renders again only when its paint or selection changes. */
+const RegionItem = memo(function RegionItem({
+  region,
+  paint,
+  isSelected,
+  onPress,
+}: RegionItemProps): JSX.Element {
+  const base: StepPaint | null =
+    paint?.base ?? (region.fill === null ? null : { color: region.fill });
+  return (
+    <li>
+      <button
+        type="button"
+        class="region-list__item"
+        aria-pressed={isSelected}
+        onClick={(event) => {
+          onPress(region.id, event);
+        }}
+      >
+        <span {...swatchProps(base)} aria-hidden="true" />
+        <RegionText name={region.name} paint={paint?.base?.name} />
+      </button>
+    </li>
+  );
+});
 
 function RegionText({ name, paint }: { name: string; paint: string | undefined }): JSX.Element {
   return (
