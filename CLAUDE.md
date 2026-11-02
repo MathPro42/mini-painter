@@ -117,6 +117,12 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   columns; `utils/paint/recipePaint.ts` turns a recipe into a region's paints.
   `utils/spreadsheet/readSpreadsheet.ts` picks the reader by content, not extension: zip →
   `.xlsx`, compound file → `.xls` (BIFF8), anything else → delimited text. Each reader bounds-checks its input and throws `RangeError`.
+- Saved work: **Save PNG** (`components/SaveWorkButton.tsx`) paints the drawing with
+  `rendering/drawingSnapshot.ts` (same `paintSvg` pipeline, no selection outlines), then
+  `utils/work/savedWork.ts` adds the SVG source (`state.svgSource`) and region paints as
+  versioned JSON in a zlib-compressed `iTXt` chunk (keyword `mini-painter`, via
+  `utils/png/`). **Open…** (`SvgUpload`) detects a PNG by its signature and calls
+  `state.loadWork()`, which restores the paints as a fresh undo history.
 - Palettes persist through a `KeyValueStorage` passed to `createAppState({ storage })`.
   `main.tsx` passes `localStorage` (via `state/browserStorage.ts`); tests pass a fake or
   nothing. Every palette change saves; `utils/palette/savedPalettes.ts` owns the JSON format.
@@ -185,6 +191,8 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-11-02 | Work saves as a PNG of the painted drawing; SVG + paints ride in an `iTXt` chunk | One file that any image viewer shows and that reopens in the app. Viewers ignore the chunk; no server.      |
+| 2026-11-02 | Opened work starts a fresh undo history at its saved paints                      | Undo history is not saved. Undoing past the save would show paints nobody chose in this session.            |
 | 2026-10-30 | Long lists memoize their rows with `components/memo.ts`, not `preact/compat`     | A paint change re-rendered every palette and region row. compat's `memo` would install its global hooks.    |
 | 2026-10-30 | Render on demand; the loop runs every frame only while the cube spins            | A drawing nobody touches cost ~60 frames/s of GPU work. Camera moves, repaints and resizes ask for frames.  |
 | 2026-10-30 | Repaints wait for the next frame; selection outlines are an overlay texture      | A color drag fires several `input`s per frame, each a repaint. Selecting repainted every paint layer.       |

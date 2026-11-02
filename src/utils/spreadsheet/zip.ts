@@ -1,4 +1,5 @@
-import { concatBytes, sliceBytes, startsWithBytes, viewOf } from './bytes';
+import { inflate } from '../deflate';
+import { sliceBytes, startsWithBytes, viewOf } from './bytes';
 
 /** One file listed in a zip archive's central directory. */
 export interface ZipEntry {
@@ -91,30 +92,7 @@ export async function readZipEntry(
     return data;
   }
   if (entry.method === DEFLATED) {
-    return inflate(data, entry.name, maxBytes);
+    return inflate(data, 'deflate-raw', maxBytes, entry.name);
   }
   throw new RangeError(`${entry.name} uses an unsupported compression method`);
-}
-
-async function inflate(data: Uint8Array, name: string, maxBytes: number): Promise<Uint8Array> {
-  // The declared size can lie, so the output is counted as it streams.
-  const reader = new Blob([data.slice()])
-    .stream()
-    .pipeThrough(new DecompressionStream('deflate-raw'))
-    .getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-      total += chunk.value.byteLength;
-      if (total > maxBytes) {
-        void reader.cancel();
-        throw new RangeError(`${name} is too large`);
-      }
-      chunks.push(chunk.value);
-    }
-  } catch (error) {
-    throw error instanceof RangeError ? error : new RangeError(`${name} could not be decompressed`);
-  }
-  return concatBytes(chunks);
 }
