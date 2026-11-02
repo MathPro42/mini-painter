@@ -48,7 +48,7 @@ Jekyll deploy on every push, and if it finishes last it publishes the raw repo (
 
 ```
 src/
-  main.tsx        entry point: creates state, mounts <App/>. Nothing else.
+  main.tsx        entry point: creates state, starts autosave, mounts <App/>. Nothing else.
   components/     Preact UI (DOM, events, layout)
   rendering/      Three.js (scene, camera, renderer, model loading)
   state/          reactive app state (@preact/signals-core stores)
@@ -123,6 +123,12 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   versioned JSON in a zlib-compressed `iTXt` chunk (keyword `mini-painter`, via
   `utils/png/`). **Open…** (`SvgUpload`) detects a PNG by its signature and calls
   `state.loadWork()`, which restores the paints as a fresh undo history.
+- Autosave: `main.tsx` calls `startAutosave(state, getBrowserWorkStorage())`
+  (`state/autosave.ts`). It restores the last drawing, its paints and its undo history from
+  IndexedDB (`state/workStorage.ts`), then follows `svgSource` and `paintHistory` and saves
+  after a short debounce; `components/AutosaveStatus.tsx` flushes when the page is hidden.
+  `utils/work/autosaveFormat.ts` stores the history with each distinct region paint once.
+  **New** (`state.closeDrawing()`) empties the view and the autosave.
 - Palettes persist through a `KeyValueStorage` passed to `createAppState({ storage })`.
   `main.tsx` passes `localStorage` (via `state/browserStorage.ts`); tests pass a fake or
   nothing. Every palette change saves; `utils/palette/savedPalettes.ts` owns the JSON format.
@@ -191,6 +197,10 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-11-02 | Autosave restores the last drawing on its own, undo history included             | Owner's call. Like a document app; New closes the drawing to start over.                                    |
+| 2026-11-02 | Autosave uses IndexedDB, not `localStorage`                                      | Drawings reach 32 MB and the history 200 steps; `localStorage` holds ~5 MB, shared with palettes.           |
+| 2026-11-02 | Autosave writes only committed steps; drawing and history in one transaction     | Color drags would write per `input`. The big SVG is rewritten only when the drawing changes.                |
+| 2026-11-02 | `fake-indexeddb` (dev only) tests the IndexedDB storage in Node                  | Node has no IndexedDB, and `state/` must keep its 90% coverage.                                             |
 | 2026-11-02 | Work saves as a PNG of the painted drawing; SVG + paints ride in an `iTXt` chunk | One file that any image viewer shows and that reopens in the app. Viewers ignore the chunk; no server.      |
 | 2026-11-02 | Opened work starts a fresh undo history at its saved paints                      | Undo history is not saved. Undoing past the save would show paints nobody chose in this session.            |
 | 2026-10-30 | Long lists memoize their rows with `components/memo.ts`, not `preact/compat`     | A paint change re-rendered every palette and region row. compat's `memo` would install its global hooks.    |

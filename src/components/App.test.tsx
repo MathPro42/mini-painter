@@ -14,6 +14,7 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Mini Painter' })).toBeInTheDocument();
     expect(screen.getByLabelText('Open…')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save PNG' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'New' })).toBeDisabled();
     expect(screen.getByRole('group', { name: 'Painting history' })).toBeInTheDocument();
     expect(screen.getByRole('complementary', { name: /Palette/ })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '3D model preview' })).toBeInTheDocument();
