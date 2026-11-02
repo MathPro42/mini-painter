@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getBrowserStorage } from './browserStorage';
+import { IDBFactory } from 'fake-indexeddb';
+import { getBrowserStorage, getBrowserWorkStorage } from './browserStorage';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -25,5 +26,27 @@ describe('getBrowserStorage', () => {
     });
     expect(getBrowserStorage()).toBeNull();
     Reflect.deleteProperty(globalThis, 'localStorage');
+  });
+});
+
+describe('getBrowserWorkStorage', () => {
+  it('uses IndexedDB when the page has it', async () => {
+    vi.stubGlobal('indexedDB', new IDBFactory());
+    const storage = getBrowserWorkStorage();
+    await storage?.save({ drawing: '<svg/>', history: 'one' });
+    expect(await storage?.load()).toEqual({ drawing: '<svg/>', history: 'one' });
+  });
+
+  it('returns null when there is none, or reading it throws', () => {
+    expect(getBrowserWorkStorage()).toBeNull();
+
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      get: () => {
+        throw new Error('SecurityError');
+      },
+    });
+    expect(getBrowserWorkStorage()).toBeNull();
+    Reflect.deleteProperty(globalThis, 'indexedDB');
   });
 });

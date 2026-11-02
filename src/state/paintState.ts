@@ -1,19 +1,16 @@
-import { batch, computed, signal } from '@preact/signals-core';
-import type { ReadonlySignal, Signal } from '@preact/signals-core';
-import { createHistory, pushHistory, redoHistory, undoHistory } from '../utils/history';
+import { batch, signal } from '@preact/signals-core';
+import type { ReadonlySignal } from '@preact/signals-core';
+import { createHistory } from '../utils/history';
 import type { History } from '../utils/history';
 import { randomRegionPaints } from '../utils/paint/recipePaint';
-import {
-  PAINT_STEPS,
-  parseStepPaint,
-  sameRegionPaints,
-  withStep,
-} from '../utils/paint/regionPaint';
+import { PAINT_STEPS, parseStepPaint, withStep } from '../utils/paint/regionPaint';
 import type { PaintStep, RegionPaint, StepPaint } from '../utils/paint/regionPaint';
 import type { PaletteColor } from '../utils/palette/paletteColor';
 import { parseSvg } from '../utils/svg/parseSvg';
 import type { ParsedSvg } from '../utils/svg/types';
 import type { SavedWork } from '../utils/work/savedWork';
+import { createPaintHistory } from './paintHistory';
+import type { PaintHistory } from './paintHistory';
 import { createRegionSelection, requireRegion } from './regionSelection';
 import type { RegionSelection } from './regionSelection';
 
@@ -25,6 +22,11 @@ export interface PaintState extends RegionSelection {
   readonly svg: ReadonlySignal<ParsedSvg | null>;
   /** The markup `svg` was parsed from, kept so the work can be saved. */
   readonly svgSource: ReadonlySignal<string | null>;
+  /**
+   * Committed paints with their undo and redo steps; regionPaints may run
+   * ahead of `present` while a paint is previewed.
+   */
+  readonly paintHistory: ReadonlySignal<History<RegionPaints>>;
   /**
    * Paints the user applied, keyed by region id. A region without a Base
    * keeps its original fill.
@@ -43,10 +45,13 @@ export interface PaintState extends RegionSelection {
   loadSvg: (source: string) => void;
   /**
    * Opens saved work: its drawing as loadSvg does, with its paints as the
-   * new starting point (nothing to undo). Throws a RangeError, changing
-   * nothing, when the drawing is invalid or a paint names an unknown region.
+   * present. `undo` restores the steps around it; without it there is
+   * nothing to undo. Throws a RangeError, changing nothing, when the drawing
+   * is invalid or any paint is invalid or names an unknown region.
    */
-  loadWork: (work: SavedWork) => void;
+  loadWork: (work: SavedWork, undo?: UndoSteps) => void;
+  /** Closes the drawing, back to the empty view, with nothing to undo. */
+  closeDrawing: () => void;
   /** Chooses the step to paint. Not an undo step. Throws a RangeError for unknown steps. */
   setActiveStep: (step: PaintStep) => void;
   /**
@@ -84,6 +89,9 @@ export interface PaintState extends RegionSelection {
   redo: () => void;
 }
 
+/** The undo and redo steps around a present, as History keeps them. */
+export type UndoSteps = Pick<History<RegionPaints>, 'past' | 'future'>;
+
 /** Creates the drawing and painting part of the app state. */
 export function createPaintState(): PaintState {
   const svg = signal<ParsedSvg | null>(null);
@@ -92,12 +100,12 @@ export function createPaintState(): PaintState {
   const activeStep = signal<PaintStep>('base');
   const useRecipes = signal(true);
   const paints = createPaintHistory();
-  const show = (parsed: ParsedSvg, source: string, start: RegionPaints): void => {
+  const show: Show = (parsed, source, history) => {
     // One update, so subscribers never see the new drawing with old paints.
     batch(() => {
       svg.value = parsed;
       svgSource.value = source;
-      paints.reset(start);
+      paints.reset(history);
       clearSelection();
       activeStep.value = 'base';
     });
@@ -106,23 +114,12 @@ export function createPaintState(): PaintState {
   return {
     svg,
     svgSource,
+    paintHistory: paints.history,
     regionPaints: paints.regionPaints,
     ...selection,
     activeStep,
     useRecipes,
-    loadSvg: (source) => {
-      show(parseSvg(source), source, new Map());
-    },
-    loadWork: (work) => {
-      const parsed = parseSvg(work.svgSource);
-      const restored = new Map(
-        Array.from(work.paints, ([id, paint]) => [
-          requireRegion(parsed, id),
-          parseRegionPaint(paint),
-        ]),
-      );
-      show(parsed, work.svgSource, restored);
-    },
+    ...createDrawingActions(show),
     setActiveStep: (step) => {
       if (!PAINT_STEPS.includes(step)) {
         throw new RangeError(`Not a paint step: "${step}"`);
@@ -144,6 +141,35 @@ export function createPaintState(): PaintState {
     canRedo: paints.canRedo,
     undo: paints.undo,
     redo: paints.redo,
+  };
+}
+
+type Show = (
+  parsed: ParsedSvg | null,
+  source: string | null,
+  history: History<RegionPaints>,
+) => void;
+
+/** Opening and closing drawings; `show` makes one current with its paint history. */
+function createDrawingActions(
+  show: Show,
+): Pick<PaintState, 'loadSvg' | 'loadWork' | 'closeDrawing'> {
+  return {
+    loadSvg: (source) => {
+      show(parseSvg(source), source, createHistory(new Map()));
+    },
+    loadWork: (work, undo = { past: [], future: [] }) => {
+      const parsed = parseSvg(work.svgSource);
+      const restore = createSnapshotReader(parsed);
+      show(parsed, work.svgSource, {
+        past: undo.past.map(restore),
+        present: restore(work.paints),
+        future: undo.future.map(restore),
+      });
+    },
+    closeDrawing: () => {
+      show(null, null, createHistory(new Map()));
+    },
   };
 }
 
@@ -197,6 +223,22 @@ function withRegions(
   return next;
 }
 
+/**
+ * Validates snapshots of a drawing's paints: every id must name one of its
+ * regions. A region paint shared by several snapshots stays shared, so
+ * restored histories keep their small size.
+ */
+function createSnapshotReader(svg: ParsedSvg): (paints: RegionPaints) => RegionPaints {
+  const parsed = new Map<RegionPaint, RegionPaint>();
+  const parseShared = (paint: RegionPaint): RegionPaint => {
+    const known = parsed.get(paint) ?? parseRegionPaint(paint);
+    parsed.set(paint, known);
+    return known;
+  };
+  return (paints) =>
+    new Map(Array.from(paints, ([id, paint]) => [requireRegion(svg, id), parseShared(paint)]));
+}
+
 /** Validates every step of a region paint. Throws a RangeError for an invalid color. */
 function parseRegionPaint(paint: RegionPaint): RegionPaint {
   let parsed: RegionPaint = {};
@@ -207,60 +249,4 @@ function parseRegionPaint(paint: RegionPaint): RegionPaint {
     }
   }
   return parsed;
-}
-
-interface PaintHistory {
-  readonly regionPaints: Signal<RegionPaints>;
-  readonly canUndo: ReadonlySignal<boolean>;
-  readonly canRedo: ReadonlySignal<boolean>;
-  readonly undo: () => void;
-  readonly redo: () => void;
-  /** Shows `next` and records it as one undo step, unless nothing changed. */
-  readonly commit: (next: RegionPaints) => void;
-  /** Shows `next` without recording it. */
-  readonly preview: (next: RegionPaints) => void;
-  /** Starts over from `start` with nothing to undo. */
-  readonly reset: (start: RegionPaints) => void;
-}
-
-function createPaintHistory(): PaintHistory {
-  const regionPaints = signal<RegionPaints>(new Map());
-  // `present` is the last committed paints; regionPaints may run ahead of it during a preview.
-  const history = signal<History<RegionPaints>>(createHistory(regionPaints.peek()));
-  const travel = (step: (current: History<RegionPaints>) => History<RegionPaints>): void => {
-    const next = step(history.peek());
-    batch(() => {
-      history.value = next;
-      regionPaints.value = next.present;
-    });
-  };
-  return {
-    regionPaints,
-    canUndo: computed(() => history.value.past.length > 0),
-    canRedo: computed(() => history.value.future.length > 0),
-    undo: () => {
-      travel(undoHistory);
-    },
-    redo: () => {
-      travel(redoHistory);
-    },
-    commit: (next) => {
-      const current = history.peek();
-      batch(() => {
-        if (!sameRegionPaints(next, current.present)) {
-          history.value = pushHistory(current, next);
-        }
-        regionPaints.value = next;
-      });
-    },
-    preview: (next) => {
-      regionPaints.value = next;
-    },
-    reset: (start) => {
-      batch(() => {
-        history.value = createHistory(start);
-        regionPaints.value = start;
-      });
-    },
-  };
 }

@@ -56,7 +56,9 @@ export function parseSavedWork(text: string): SavedWork {
   }
   return {
     svgSource,
-    paints: new Map(Object.entries(paints).map(([id, paint]) => [id, readRegionPaint(paint)])),
+    paints: new Map(
+      Object.entries(paints).map(([id, paint]) => [id, parseSavedRegionPaint(paint)]),
+    ),
   };
 }
 
@@ -86,7 +88,8 @@ export async function extractSavedWork(png: Uint8Array, maxBytes: number): Promi
   return parseSavedWork(new TextDecoder().decode(bytes));
 }
 
-function readRegionPaint(value: unknown): RegionPaint {
+/** Reads one region's paints from parsed JSON. Throws a RangeError when anything is invalid. */
+export function parseSavedRegionPaint(value: unknown): RegionPaint {
   if (!isRecord(value)) {
     throw new RangeError('The saved work is damaged');
   }
