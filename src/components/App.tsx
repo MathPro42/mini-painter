@@ -3,6 +3,7 @@ import type { AppState } from '../state/appState';
 import { HistoryControls } from './HistoryControls';
 import { PalettePanel } from './PalettePanel';
 import { RegionPanel } from './RegionPanel';
+import { SaveWorkButton } from './SaveWorkButton';
 import { SvgUpload } from './SvgUpload';
 import { Viewport } from './Viewport';
 
@@ -18,6 +19,7 @@ export function App({ state }: AppProps): JSX.Element {
         <div class="app__actions">
           <HistoryControls state={state} />
           <SvgUpload state={state} />
+          <SaveWorkButton state={state} />
         </div>
       </header>
       <div class="app__body">

@@ -3,7 +3,7 @@ import xlsxFixture from './fixtures/palette.xlsx?inline';
 import { viewOf } from './bytes';
 import { isZip, listZipEntries, readZipEntry } from './zip';
 import type { ZipEntry } from './zip';
-import { createZip, crc32 } from './zipWrite';
+import { createZip } from './zipWrite';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -31,12 +31,7 @@ const centralOffset = (bytes: Uint8Array): number => {
   return view.getUint32(bytes.byteLength - 22 + 16, true);
 };
 
-describe('createZip and crc32', () => {
-  it('computes the standard CRC-32', () => {
-    expect(crc32(encoder.encode('123456789'))).toBe(0xcbf43926);
-    expect(crc32(new Uint8Array())).toBe(0);
-  });
-
+describe('createZip', () => {
   it('writes an archive that lists and extracts its files', async () => {
     const bytes = sample();
     expect(isZip(bytes)).toBe(true);

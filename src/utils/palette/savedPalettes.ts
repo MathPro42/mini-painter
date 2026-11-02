@@ -1,3 +1,4 @@
+import { isRecord } from '../isRecord';
 import { normalizePaletteColor } from './paletteColor';
 import type { PaletteColor } from './paletteColor';
 import { appendPaletteColors } from './paletteList';
@@ -80,8 +81,4 @@ function readColor(color: Readonly<Record<string, unknown>>): PaletteColor | nul
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

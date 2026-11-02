@@ -13,6 +13,7 @@ import type { PaintStep, RegionPaint, StepPaint } from '../utils/paint/regionPai
 import type { PaletteColor } from '../utils/palette/paletteColor';
 import { parseSvg } from '../utils/svg/parseSvg';
 import type { ParsedSvg } from '../utils/svg/types';
+import type { SavedWork } from '../utils/work/savedWork';
 import { createRegionSelection, requireRegion } from './regionSelection';
 import type { RegionSelection } from './regionSelection';
 
@@ -22,6 +23,8 @@ type RegionPaints = ReadonlyMap<string, RegionPaint>;
 export interface PaintState extends RegionSelection {
   /** The uploaded SVG split into paintable regions, or `null` before any upload. */
   readonly svg: ReadonlySignal<ParsedSvg | null>;
+  /** The markup `svg` was parsed from, kept so the work can be saved. */
+  readonly svgSource: ReadonlySignal<string | null>;
   /**
    * Paints the user applied, keyed by region id. A region without a Base
    * keeps its original fill.
@@ -38,6 +41,12 @@ export interface PaintState extends RegionSelection {
    * has nothing paintable.
    */
   loadSvg: (source: string) => void;
+  /**
+   * Opens saved work: its drawing as loadSvg does, with its paints as the
+   * new starting point (nothing to undo). Throws a RangeError, changing
+   * nothing, when the drawing is invalid or a paint names an unknown region.
+   */
+  loadWork: (work: SavedWork) => void;
   /** Chooses the step to paint. Not an undo step. Throws a RangeError for unknown steps. */
   setActiveStep: (step: PaintStep) => void;
   /**
@@ -78,26 +87,41 @@ export interface PaintState extends RegionSelection {
 /** Creates the drawing and painting part of the app state. */
 export function createPaintState(): PaintState {
   const svg = signal<ParsedSvg | null>(null);
+  const svgSource = signal<string | null>(null);
   const { clear: clearSelection, ...selection } = createRegionSelection(svg);
   const activeStep = signal<PaintStep>('base');
   const useRecipes = signal(true);
   const paints = createPaintHistory();
+  const show = (parsed: ParsedSvg, source: string, start: RegionPaints): void => {
+    // One update, so subscribers never see the new drawing with old paints.
+    batch(() => {
+      svg.value = parsed;
+      svgSource.value = source;
+      paints.reset(start);
+      clearSelection();
+      activeStep.value = 'base';
+    });
+  };
 
   return {
     svg,
+    svgSource,
     regionPaints: paints.regionPaints,
     ...selection,
     activeStep,
     useRecipes,
     loadSvg: (source) => {
-      const parsed = parseSvg(source);
-      // One update, so subscribers never see the new drawing with old paints.
-      batch(() => {
-        svg.value = parsed;
-        paints.reset();
-        clearSelection();
-        activeStep.value = 'base';
-      });
+      show(parseSvg(source), source, new Map());
+    },
+    loadWork: (work) => {
+      const parsed = parseSvg(work.svgSource);
+      const restored = new Map(
+        Array.from(work.paints, ([id, paint]) => [
+          requireRegion(parsed, id),
+          parseRegionPaint(paint),
+        ]),
+      );
+      show(parsed, work.svgSource, restored);
     },
     setActiveStep: (step) => {
       if (!PAINT_STEPS.includes(step)) {
@@ -195,8 +219,8 @@ interface PaintHistory {
   readonly commit: (next: RegionPaints) => void;
   /** Shows `next` without recording it. */
   readonly preview: (next: RegionPaints) => void;
-  /** Starts over with no paints and nothing to undo. */
-  readonly reset: () => void;
+  /** Starts over from `start` with nothing to undo. */
+  readonly reset: (start: RegionPaints) => void;
 }
 
 function createPaintHistory(): PaintHistory {
@@ -232,11 +256,10 @@ function createPaintHistory(): PaintHistory {
     preview: (next) => {
       regionPaints.value = next;
     },
-    reset: () => {
-      const empty: RegionPaints = new Map();
+    reset: (start) => {
       batch(() => {
-        history.value = createHistory(empty);
-        regionPaints.value = empty;
+        history.value = createHistory(start);
+        regionPaints.value = start;
       });
     },
   };
