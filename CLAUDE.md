@@ -147,6 +147,10 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
 5. **Green before merge.** Lint, format, typecheck, tests and build must pass in CI.
 6. **Strict TypeScript.** No `any`, no non-null assertions, no `@ts-ignore`. Use named
    exports only (no `export default` in `src/`).
+7. **One commit, One purpose** Each commit must correspond to one feature.
+   Test and Code must be separated in different commits
+8. **One branch per feature** Each feature must be developped from a new branch created from main.
+   The name of the branch must reflect which feature is developped on it.
 
 ## Conventions
 
