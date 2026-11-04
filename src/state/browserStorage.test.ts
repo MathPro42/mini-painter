@@ -33,8 +33,9 @@ describe('getBrowserWorkStorage', () => {
   it('uses IndexedDB when the page has it', async () => {
     vi.stubGlobal('indexedDB', new IDBFactory());
     const storage = getBrowserWorkStorage();
-    await storage?.save({ drawing: '<svg/>', history: 'one' });
-    expect(await storage?.load()).toEqual({ drawing: '<svg/>', history: 'one' });
+    const work = { drawingId: 'a', drawing: '<svg/>', history: 'one' };
+    await storage?.save(work);
+    expect(await storage?.load()).toEqual(work);
   });
 
   it('returns null when there is none, or reading it throws', () => {
