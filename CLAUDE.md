@@ -128,6 +128,8 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   IndexedDB (`state/workStorage.ts`), then follows `svgSource` and `paintHistory` and saves
   after a short debounce; `components/AutosaveStatus.tsx` flushes when the page is hidden.
   `utils/work/autosaveFormat.ts` stores the history with each distinct region paint once.
+  The history is stored with the id of its drawing. A save writes the drawing again when
+  storage holds another id, because tabs share the database.
   **New** (`state.closeDrawing()`) empties the view and the autosave.
 - Palettes persist through a `KeyValueStorage` passed to `createAppState({ storage })`.
   `main.tsx` passes `localStorage` (via `state/browserStorage.ts`); tests pass a fake or
@@ -201,6 +203,8 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-11-04 | Autosave keeps a drawing id; the drawing is rewritten when storage has another   | Two tabs saved one drawing with the other's history, and the next restore deleted both. Last save wins.     |
+| 2026-11-04 | Autosaved work that can't be restored is kept until a new drawing replaces it    | Deleting it lost work for good. A later version may read it.                                                |
 | 2026-11-02 | Autosave restores the last drawing on its own, undo history included             | Owner's call. Like a document app; New closes the drawing to start over.                                    |
 | 2026-11-02 | Autosave uses IndexedDB, not `localStorage`                                      | Drawings reach 32 MB and the history 200 steps; `localStorage` holds ~5 MB, shared with palettes.           |
 | 2026-11-02 | Autosave writes only committed steps; drawing and history in one transaction     | Color drags would write per `input`. The big SVG is rewritten only when the drawing changes.                |
