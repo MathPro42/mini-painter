@@ -87,7 +87,7 @@ export default defineConfig([
   { files: ['src/components/**'], rules: restrictImports('three') },
 
   {
-    files: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
+    files: ['src/**/*.test.{ts,tsx}', 'src/test/**', '.claude/**/*.test.js'],
     rules: { 'max-lines-per-function': 'off' },
   },
   {
@@ -97,6 +97,12 @@ export default defineConfig([
   {
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    // Claude Code hooks: plain JavaScript that Node runs, so no type annotations.
+    files: ['.claude/**/*.js'],
+    languageOptions: { globals: globals.node },
+    rules: { '@typescript-eslint/explicit-module-boundary-types': 'off' },
   },
 
   prettier,

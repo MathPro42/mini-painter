@@ -23,6 +23,11 @@ export default mergeConfig(
             setupFiles: ['src/test/setup.ts'],
           },
         },
+        {
+          // Claude Code hooks: Node scripts outside the app.
+          extends: true,
+          test: { name: 'hooks', environment: 'node', include: ['.claude/hooks/**/*.test.js'] },
+        },
       ],
       coverage: {
         provider: 'v8',
