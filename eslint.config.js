@@ -87,7 +87,7 @@ export default defineConfig([
   { files: ['src/components/**'], rules: restrictImports('three') },
 
   {
-    files: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
+    files: ['src/**/*.test.{ts,tsx}', 'src/test/**', '.claude/**/*.test.js'],
     rules: { 'max-lines-per-function': 'off' },
   },
   {

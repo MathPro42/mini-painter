@@ -86,6 +86,39 @@ describe('branchNameProblem', () => {
   it('lets main be pushed', () => {
     expect(check('git push origin main', GENERATED)).toBeNull();
   });
+
+  it('does not read shell redirections as branch names', () => {
+    for (const command of [
+      `git push -u origin ${FEATURE} 2>&1 | tail -3`,
+      `git push -u origin ${FEATURE} >/tmp/push.log 2>/dev/null`,
+      `git push -u origin ${FEATURE} > push.log`,
+    ]) {
+      expect(check(command)).toBeNull();
+    }
+    expect(check(`git push -u origin ${GENERATED} 2>&1 | tail -3`)).not.toBeNull();
+  });
+
+  it('reads a number glued to a word as part of it, as the shell does', () => {
+    expect(check(`git push origin ${FEATURE}2>push.log`)).toBeNull();
+  });
+
+  it('ignores text that only mentions a push, in quotes or a heredoc', () => {
+    const message = `Explain why git push origin ${GENERATED} is refused`;
+    expect(check(`git commit -m "${message}"`)).toBeNull();
+    expect(check(`echo "next: git push origin ${GENERATED}"`)).toBeNull();
+    expect(check(`git commit -q -F - <<'EOF'\n${message}\ngit push origin x\nEOF`)).toBeNull();
+  });
+
+  it('still checks the commands around a heredoc', () => {
+    const commit = "git commit -q -F - <<'EOF'\nPaint\nEOF";
+    expect(check(`${commit}\ngit push origin ${GENERATED}`)).not.toBeNull();
+    expect(check(commit, GENERATED)).not.toBeNull();
+  });
+
+  it('finds pushes in loops and subshells', () => {
+    expect(check(`for i in 1 2; do git push origin ${GENERATED} && break; done`)).not.toBeNull();
+    expect(check(`(git push origin ${GENERATED})`)).not.toBeNull();
+  });
 });
 
 describe('checkBranchName.js', () => {
