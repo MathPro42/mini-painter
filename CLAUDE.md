@@ -153,6 +153,9 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
    Test and Code must be separated in different commits
 8. **One branch per feature** Each feature must be developped from a new branch created from main.
    The name of the branch must reflect which feature is developped on it.
+   Claude names that branch itself, in lowercase words joined by hyphens
+   (`fix-autosave-across-tabs`), and pushes to it. This is standing permission to push it
+   instead of the `claude/…` branch a session assigns, which is never used.
 
 ## Conventions
 
@@ -203,6 +206,7 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-11-04 | Claude names each feature branch itself; a session's `claude/…` branch is unused | Owner's call. Sessions assign a random `claude/…` branch and push nowhere else without permission.          |
 | 2026-11-04 | Autosave keeps a drawing id; the drawing is rewritten when storage has another   | Two tabs saved one drawing with the other's history, and the next restore deleted both. Last save wins.     |
 | 2026-11-04 | Autosaved work that can't be restored is kept until a new drawing replaces it    | Deleting it lost work for good. A later version may read it.                                                |
 | 2026-11-02 | Autosave restores the last drawing on its own, undo history included             | Owner's call. Like a document app; New closes the drawing to start over.                                    |
