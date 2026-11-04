@@ -98,6 +98,12 @@ export default defineConfig([
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
   },
+  {
+    // Claude Code hooks: plain JavaScript that Node runs, so no type annotations.
+    files: ['.claude/**/*.js'],
+    languageOptions: { globals: globals.node },
+    rules: { '@typescript-eslint/explicit-module-boundary-types': 'off' },
+  },
 
   prettier,
 ]);

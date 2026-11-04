@@ -155,7 +155,8 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
    The name of the branch must reflect which feature is developped on it.
    Claude names that branch itself, in lowercase words joined by hyphens
    (`fix-autosave-across-tabs`), and pushes to it. This is standing permission to push it
-   instead of the `claude/…` branch a session assigns, which is never used.
+   instead of the `claude/…` branch a session assigns, which is never used. A hook
+   (`.claude/hooks/checkBranchName.js`) blocks commits and pushes on other branch names.
 
 ## Conventions
 
@@ -206,6 +207,7 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-11-04 | A PreToolUse hook blocks commits and pushes on branches not named like features  | Rules people (and Claude) must remember get broken. Hooks run in Claude Code, so they can't be skipped.     |
 | 2026-11-04 | Claude names each feature branch itself; a session's `claude/…` branch is unused | Owner's call. Sessions assign a random `claude/…` branch and push nowhere else without permission.          |
 | 2026-11-04 | Autosave keeps a drawing id; the drawing is rewritten when storage has another   | Two tabs saved one drawing with the other's history, and the next restore deleted both. Last save wins.     |
 | 2026-11-04 | Autosaved work that can't be restored is kept until a new drawing replaces it    | Deleting it lost work for good. A later version may read it.                                                |
