@@ -2,6 +2,7 @@ import { effect, signal } from '@preact/signals-core';
 import type { ReadonlySignal } from '@preact/signals-core';
 import { encodeAutosavedHistory, parseAutosavedHistory } from '../utils/work/autosaveFormat';
 import type { PaintState } from './paintState';
+import { createDrawingId } from './workStorage';
 import type { WorkStorage } from './workStorage';
 
 /** Keeps the current work in storage and brings it back on the next visit. */
@@ -28,7 +29,8 @@ export const AUTOSAVE_DELAY_MS = 400;
  * Restores the work `storage` holds into `state`, then saves the drawing and
  * its undo history after every committed change. Previews are not saved: they
  * change the paints, not the history. A drawing opened while the restore is
- * still loading wins over the restored one.
+ * still loading wins over the restored one. Tabs share the storage: the last
+ * save wins, but a drawing is never kept with another drawing's history.
  */
 export function startAutosave(
   state: PaintState,
@@ -46,11 +48,8 @@ export function startAutosave(
   const writer = createWriter(state, storage, options.delayMs ?? AUTOSAVE_DELAY_MS);
   let stopWatching: (() => void) | null = null;
   let disposed = false;
-  const restored = restoreWork(state, storage).then((inSync) => {
+  const restored = restoreWork(state, storage, writer.markSaved).then(() => {
     if (!disposed) {
-      if (inSync) {
-        writer.markSaved();
-      }
       stopWatching = effect(() => {
         writer.changed(state.svgSource.value, state.paintHistory.value);
       });
@@ -68,31 +67,45 @@ export function startAutosave(
   };
 }
 
-/** Restores saved work. Resolves to whether state now shows exactly what storage holds. */
-async function restoreWork(state: PaintState, storage: WorkStorage): Promise<boolean> {
+/**
+ * Restores saved work, and calls `markSaved` unless state then shows a
+ * drawing that storage lacks: one the user opened while the restore loaded.
+ */
+async function restoreWork(
+  state: PaintState,
+  storage: WorkStorage,
+  markSaved: Writer['markSaved'],
+): Promise<void> {
   try {
     const saved = await storage.load();
     if (state.svg.peek() !== null) {
       // The user opened a drawing meanwhile: it wins, and is saved next.
-      return false;
+      return;
     }
     if (saved === null) {
-      return true;
+      markSaved(null);
+      return;
     }
     const { past, present, future } = parseAutosavedHistory(saved.history);
     state.loadWork({ svgSource: saved.drawing, paints: present }, { past, future });
-    return true;
+    markSaved(saved.drawingId);
   } catch (error) {
     console.warn('Could not restore the last drawing', error);
-    await storage.clear().catch(() => undefined);
-    return state.svg.peek() === null;
+    // The work stays in storage until a drawing replaces it: a later version
+    // may read what this one can't.
+    if (state.svg.peek() === null) {
+      markSaved(null);
+    }
   }
 }
 
 interface Writer {
   readonly workSaved: ReadonlySignal<boolean>;
-  /** Treats what state shows now as already saved. */
-  markSaved: () => void;
+  /**
+   * Treats what state shows now as already saved, under `drawingId`, the id
+   * storage keeps its drawing under (`null` when state shows no drawing).
+   */
+  markSaved: (drawingId: string | null) => void;
   /** Schedules a save if the drawing or the history changed since the last one. */
   changed: (source: string | null, history: PaintState['paintHistory']['value']) => void;
   flush: () => Promise<void>;
@@ -103,6 +116,9 @@ function createWriter(state: PaintState, storage: WorkStorage, delayMs: number):
   const workSaved = signal(true);
   let savedSource: string | null | undefined;
   let savedHistory: unknown;
+  // Names savedSource in storage. Comparing ids there, not drawings here,
+  // catches another tab that saved its own drawing since this one wrote it.
+  let drawingId = createDrawingId();
   let timer: ReturnType<typeof setTimeout> | null = null;
   // Writes run one after another, so an older one can never land last.
   let queue = Promise.resolve();
@@ -116,7 +132,9 @@ function createWriter(state: PaintState, storage: WorkStorage, delayMs: number):
   const write = async (): Promise<void> => {
     const source = state.svgSource.peek();
     const history = state.paintHistory.peek();
-    const drawingChanged = source !== savedSource;
+    if (source !== savedSource) {
+      drawingId = createDrawingId();
+    }
     savedSource = source;
     savedHistory = history;
     try {
@@ -124,13 +142,12 @@ function createWriter(state: PaintState, storage: WorkStorage, delayMs: number):
         await storage.clear();
       } else {
         const text = encodeAutosavedHistory(history);
-        await storage.save(drawingChanged ? { drawing: source, history: text } : { history: text });
+        await storage.save({ drawingId, drawing: source, history: text });
       }
       workSaved.value = true;
     } catch (error) {
+      // A failed save changes nothing, and storage rewrites the drawing whenever it lacks it.
       console.warn('Could not save the drawing in this browser', error);
-      // Rewrite everything next time rather than trust a half-known state.
-      savedSource = undefined;
       workSaved.value = false;
     }
   };
@@ -141,9 +158,10 @@ function createWriter(state: PaintState, storage: WorkStorage, delayMs: number):
   };
   return {
     workSaved,
-    markSaved: () => {
+    markSaved: (storedId) => {
       savedSource = state.svgSource.peek();
       savedHistory = state.paintHistory.peek();
+      drawingId = storedId ?? drawingId;
     },
     changed: (source, history) => {
       if (source === savedSource && history === savedHistory) {

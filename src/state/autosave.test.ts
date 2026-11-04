@@ -13,6 +13,7 @@ const GREY = { color: '#808080' };
 
 interface FakeStorage extends WorkStorage {
   work: AutosavedWork | null;
+  /** What each save wrote: the drawing too only when storage held another drawing id. */
   readonly saves: { readonly drawing?: string; readonly history: string }[];
   fail: boolean;
 }
@@ -27,11 +28,14 @@ const fakeStorage = (work: AutosavedWork | null = null): FakeStorage => {
       if (storage.fail) {
         return Promise.reject(new Error('full'));
       }
-      storage.saves.push(next);
-      storage.work = {
-        drawing: next.drawing ?? storage.work?.drawing ?? '',
-        history: next.history,
-      };
+      const held = storage.work;
+      if (held?.drawingId === next.drawingId) {
+        storage.saves.push({ history: next.history });
+        storage.work = { ...held, history: next.history };
+      } else {
+        storage.saves.push({ drawing: next.drawing, history: next.history });
+        storage.work = next;
+      }
       return Promise.resolve();
     },
     clear: () => {
@@ -49,7 +53,11 @@ const savedWork = (): AutosavedWork => {
   state.setRegionsStep(['region-0'], 'base', RED);
   state.setRegionsStep(['region-1'], 'base', GREY);
   state.undo();
-  return { drawing: DRAWING, history: encodeAutosavedHistory(state.paintHistory.value) };
+  return {
+    drawingId: 'saved',
+    drawing: DRAWING,
+    history: encodeAutosavedHistory(state.paintHistory.value),
+  };
 };
 
 const settle = async (): Promise<void> => {
@@ -86,6 +94,14 @@ describe('startAutosave', () => {
     await startAutosave(state, storage).restored;
     await settle();
     expect(storage.saves).toEqual([]);
+  });
+
+  it('saves paints on a restored drawing without writing the drawing again', async () => {
+    const storage = fakeStorage(savedWork());
+    await startAutosave(state, storage).restored;
+    state.setRegionsStep(['region-1'], 'base', RED);
+    await settle();
+    expect(storage.saves).toEqual([{ history: encodeAutosavedHistory(state.paintHistory.value) }]);
   });
 
   it('saves a new drawing with its history, then only the history', async () => {
@@ -151,12 +167,29 @@ describe('startAutosave', () => {
     expect(storage.work?.drawing).toBe(OTHER_DRAWING);
   });
 
-  it('ignores and clears damaged work', async () => {
-    const storage = fakeStorage({ drawing: DRAWING, history: 'damaged' });
+  it('keeps damaged work it cannot restore, until a drawing replaces it', async () => {
+    const damaged = { drawingId: 'saved', drawing: DRAWING, history: 'damaged' };
+    const storage = fakeStorage(damaged);
     await startAutosave(state, storage).restored;
     expect(state.svg.value).toBeNull();
-    expect(storage.work).toBeNull();
     expect(console.warn).toHaveBeenCalled();
+    await settle();
+    expect(storage.work).toEqual(damaged);
+
+    state.loadSvg(OTHER_DRAWING);
+    await settle();
+    expect(storage.work?.drawing).toBe(OTHER_DRAWING);
+    expect(storage.work?.history).toBe(encodeAutosavedHistory(state.paintHistory.value));
+  });
+
+  it('saves a drawing opened while a failing restore was loading', async () => {
+    const storage = fakeStorage(savedWork());
+    storage.load = () => Promise.reject(new Error('blocked'));
+    const autosave = startAutosave(state, storage);
+    state.loadSvg(OTHER_DRAWING);
+    await autosave.restored;
+    await settle();
+    expect(storage.work?.drawing).toBe(OTHER_DRAWING);
   });
 
   it('ignores work whose paints name regions the drawing lacks', async () => {
