@@ -5,8 +5,16 @@
 /** Lowercase words joined by hyphens, at least two: `fix-autosave-across-tabs`. */
 const FEATURE_BRANCH = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
 
-/** `git commit` or `git push`, after any `-C`/`-c` options, and its words up to the next separator. */
-const COMMIT_OR_PUSH = /\bgit(?:\s+-[Cc]\s+\S+)*\s+(commit|push)\b([^;&|\n]*)/g;
+/**
+ * `git commit` or `git push` where a shell command starts, after any `-C`/`-c` options,
+ * and its words up to the next separator. Text that only mentions one, such as a quoted
+ * message, does not count.
+ */
+const COMMIT_OR_PUSH =
+  /(?:^|[;&|(\n]|\b(?:then|do)\b)\s*git(?:\s+-[Cc]\s+\S+)*\s+(commit|push)\b([^;&|\n]*)/g;
+
+/** A heredoc's body, up to its closing delimiter: the text of a `git commit -F - <<'EOF'`. */
+const HEREDOC_BODY = /(<<-?\s*(['"]?)(\w+)\2[^\n]*)\n[\s\S]*?\n[ \t]*\3[ \t]*(?=\n|$)/g;
 
 /** Push words after which nothing is written to a branch. */
 const NO_BRANCH_PUSH = new Set(['--delete', '-d', '--tags']);
@@ -22,7 +30,8 @@ export function isFeatureBranch(name) {
  * (`''` when detached); it is called only when a command needs it.
  */
 export function branchNameProblem(command, currentBranch) {
-  for (const [, action, words] of command.matchAll(COMMIT_OR_PUSH)) {
+  const shellText = command.replace(HEREDOC_BODY, '$1');
+  for (const [, action, words] of shellText.matchAll(COMMIT_OR_PUSH)) {
     const branches = action === 'commit' ? [currentBranch()] : pushedBranches(words, currentBranch);
     const broken = branches.find((name) => name !== '' && !isFeatureBranch(name));
     if (broken !== undefined) {
@@ -34,13 +43,14 @@ export function branchNameProblem(command, currentBranch) {
 
 /** The branches a push writes, from the words after `git push`. Deletions and tags write none. */
 function pushedBranches(words, currentBranch) {
-  const parts = words.split(/\s+/).filter((part) => part !== '');
+  const args = withoutRedirections(words);
+  const parts = args.split(/\s+/).filter((part) => part !== '');
   if (parts.some((part) => NO_BRANCH_PUSH.has(part))) {
     return [];
   }
   // A name the shell computes ("$BRANCH", $(git branch --show-current)) is most likely
   // the current branch, so that is what gets checked.
-  if (/[$`]/.test(words)) {
+  if (/[$`]/.test(args)) {
     return [currentBranch()];
   }
   const [, ...refspecs] = parts.filter((part) => !part.startsWith('-')).map(unquote);
@@ -57,6 +67,15 @@ function refspecTarget(refspec, currentBranch) {
     return [];
   }
   return [target === 'HEAD' ? currentBranch() : target.replace(/^refs\/heads\//, '')];
+}
+
+/**
+ * `words` without shell redirections, which are not git arguments: `2>&1` (cut at `&`
+ * by COMMIT_OR_PUSH), `>out.log`, `2> /dev/null`, `<<EOF`. As in the shell, a number
+ * is a file descriptor only when it starts a word.
+ */
+function withoutRedirections(words) {
+  return words.replace(/(^|\s)\d+(?=[<>])/g, '$1').replace(/[<>]+\s*[^\s<>]*/g, ' ');
 }
 
 function unquote(word) {
