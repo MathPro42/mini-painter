@@ -32,10 +32,10 @@ export function UpdateNoticeBar({ notice }: UpdateNoticeBarProps): JSX.Element |
       class={current.kind === 'countdown' ? 'update-notice update-notice--center' : 'update-notice'}
       role="status"
     >
-      <p class="update-notice__text">
-        {MESSAGES[current.kind]}
-        {current.kind === 'countdown' && ` Updating in ${String(current.secondsLeft)} s…`}
-      </p>
+      <p class="update-notice__text">{MESSAGES[current.kind]}</p>
+      {current.kind === 'countdown' && (
+        <p class="update-notice__text">Updating in {current.secondsLeft} s…</p>
+      )}
       <div class="toolbar">
         <button
           type="button"
