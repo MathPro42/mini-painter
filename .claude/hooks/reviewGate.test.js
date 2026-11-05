@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -59,6 +59,23 @@ describe('countReviews', () => {
       JSON.stringify({ type: 'user', message: { content: 'please run code-review' } }),
       reviewCall('other-skill'),
       reviewCall('anthropic-skills:code-review'),
+    ].join('\n');
+    expect(countReviews(transcript)).toBe(2);
+  });
+
+  it('counts a /code-review the user typed', () => {
+    const typed = (text) => JSON.stringify({ type: 'user', message: { content: text } });
+    const transcript = [
+      typed(
+        '<command-message>code-review</command-message>\n<command-name>/code-review</command-name>',
+      ),
+      JSON.stringify({
+        type: 'user',
+        message: {
+          content: [{ type: 'text', text: '<command-name>/x:code-review</command-name>' }],
+        },
+      }),
+      typed('what does /code-review do?'),
     ].join('\n');
     expect(countReviews(transcript)).toBe(2);
   });
@@ -175,7 +192,9 @@ describe('requireCodeReview.js', () => {
 
   /** Stops in `cwd`; `reviews` is how many code-review calls the transcript holds. */
   function stop(cwd, stopHookActive = false, reviews = 0) {
-    const transcript = join(cwd, '.git', 'transcript.jsonl');
+    const transcriptDir = mkdtempSync(join(tmpdir(), 'transcript-'));
+    dirs.push(transcriptDir);
+    const transcript = join(transcriptDir, 'transcript.jsonl');
     writeFileSync(transcript, Array(reviews).fill(reviewCall('code-review')).join('\n'));
     return spawnSync('node', [join(import.meta.dirname, 'requireCodeReview.js')], {
       input: JSON.stringify({ cwd, stop_hook_active: stopHookActive, transcript_path: transcript }),
@@ -215,6 +234,36 @@ describe('requireCodeReview.js', () => {
     expect(stop(dir, false, 1).status).toBe(0);
     writeFileSync(join(dir, 'sphere.ts'), 'export const radius = 1;\n');
     expect(stop(dir).status).toBe(2);
+  });
+
+  it('counts the fixes as reviewed when the request came as a new turn', () => {
+    const { dir } = repo();
+    writeFileSync(join(dir, 'cube.ts'), 'export const side = 2;\n');
+    expect(stop(dir).status).toBe(2);
+    writeFileSync(join(dir, 'cube.ts'), 'export const side = 3;\n');
+    expect(stop(dir, false, 1).status).toBe(0);
+    expect(stop(dir, false, 1).status).toBe(0);
+  });
+
+  it('works in a linked worktree', () => {
+    const { dir, git } = repo();
+    const tree = join(dir, '..', `${dir.split('/').pop()}-tree`);
+    dirs.push(tree);
+    git('worktree', 'add', '-q', '-b', 'sphere-size', tree);
+    writeFileSync(join(tree, 'cube.ts'), 'export const side = 2;\n');
+    const result = stop(tree);
+    expect(result.stderr).not.toContain('Review gate skipped');
+    expect(result.status).toBe(2);
+    expect(stop(tree).status).toBe(0);
+  });
+
+  it('counts new files outside the folder Claude is in', () => {
+    const { dir } = repo();
+    mkdirSync(join(dir, 'src'));
+    writeFileSync(join(dir, 'sphere.ts'), 'export const radius = 1;\n');
+    expect(stop(join(dir, 'src')).status).toBe(2);
+    writeFileSync(join(dir, 'sphere.ts'), 'export const radius = 2;\n');
+    expect(stop(join(dir, 'src')).status).toBe(2);
   });
 
   it('asks again next turn when the retry came without a review', () => {
