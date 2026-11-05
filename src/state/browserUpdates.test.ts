@@ -4,7 +4,7 @@ import type { UpdateMode } from '../utils/app/updateMode';
 import { SITE_OFFLINE_ZIP_URL, SITE_VERSION_URL } from '../utils/app/distribution';
 import type { BrowserEnv, BrowserUpdaterOptions } from './browserUpdates';
 import { getBrowserInstallPrompt, getBrowserUpdater, startBrowserUpdates } from './browserUpdates';
-import { createSettingsState } from './settingsState';
+import { createAppState } from './appState';
 import type { ContainerLike } from './serviceWorkerSource';
 
 function fakeEnv(serviceWorker?: ContainerLike) {
@@ -27,7 +27,6 @@ function options(distribution: BrowserUpdaterOptions['distribution']): BrowserUp
     currentVersion: 'abc',
     updateMode: signal<UpdateMode>('manual'),
     beforeApply: () => Promise.resolve(),
-    canApplyNow: () => true,
   };
 }
 
@@ -125,6 +124,7 @@ describe('getBrowserInstallPrompt', () => {
 });
 
 describe('startBrowserUpdates', () => {
+  const appState = () => createAppState();
   function fakeAutosave(workSaved: boolean) {
     return {
       workSaved: signal(workSaved),
@@ -142,7 +142,7 @@ describe('startBrowserUpdates', () => {
 
   it('starts no updates on the dev server, but still the install offer', () => {
     const started = startBrowserUpdates(
-      createSettingsState(),
+      appState(),
       fakeAutosave(true),
       build(false, 'site'),
       fakeEnv(),
@@ -153,12 +153,7 @@ describe('startBrowserUpdates', () => {
 
   it('flushes autosave before applying an update', async () => {
     const autosave = fakeAutosave(true);
-    const { updater } = startBrowserUpdates(
-      createSettingsState(),
-      autosave,
-      build(true),
-      fakeEnv(),
-    );
+    const { updater } = startBrowserUpdates(appState(), autosave, build(true), fakeEnv());
     await vi.waitFor(() => {
       expect(updater?.status.value).toBe('available');
     });
@@ -166,7 +161,7 @@ describe('startBrowserUpdates', () => {
     expect(autosave.flush).toHaveBeenCalled();
   });
 
-  it('lets auto mode apply only while the drawing is saved', async () => {
+  it('warns before an automatic update, and waits while a drawing is open', async () => {
     const container = fakeContainer();
     const waiting = { state: 'installed', postMessage: vi.fn(), addEventListener: vi.fn() };
     container.register.mockResolvedValue({
@@ -175,15 +170,26 @@ describe('startBrowserUpdates', () => {
       update: () => Promise.resolve(),
       addEventListener: () => undefined,
     });
-    const { updater } = startBrowserUpdates(
-      createSettingsState(),
+    const state = appState();
+    state.loadSvg('<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>');
+    const { notice } = startBrowserUpdates(
+      state,
       fakeAutosave(false),
       build(true, 'site'),
       fakeEnv(container),
     );
     await vi.waitFor(() => {
-      expect(updater?.status.value).toBe('available');
+      expect(notice?.notice.value).toEqual({ kind: 'on-close', workAtRisk: true });
     });
     expect(waiting.postMessage).not.toHaveBeenCalled();
+    state.closeDrawing();
+    expect(notice?.notice.value.kind).toBe('countdown');
+    notice?.dispose();
+  });
+
+  it('has no notice where nothing updates', () => {
+    expect(
+      startBrowserUpdates(appState(), fakeAutosave(true), build(false), fakeEnv()).notice,
+    ).toBeNull();
   });
 });

@@ -59,53 +59,40 @@ describe('createAppUpdater in auto mode', () => {
     expect(source.check).toHaveBeenCalledTimes(3);
   });
 
-  it('flushes work, then applies an update it finds', async () => {
-    const order: string[] = [];
+  it('finds an update but leaves applying it to the caller', async () => {
     const source = fakeSource();
-    source.hasUpdate = true;
-    source.apply.mockImplementation(() => {
-      order.push('apply');
-      return Promise.resolve();
-    });
-    const beforeApply = vi.fn(() => {
-      order.push('flush');
-      return Promise.resolve();
-    });
-    const { updater } = setup('auto', source, { beforeApply });
-    await vi.waitFor(() => {
-      expect(order).toEqual(['flush', 'apply']);
-    });
-    expect(updater.status.value).toBe('applying');
-  });
-
-  it('waits for the user when the drawing cannot be kept', async () => {
-    const source = fakeSource();
-    source.hasUpdate = true;
-    const { updater } = setup('auto', source, { canApplyNow: () => false });
-    await vi.waitFor(() => {
-      expect(updater.status.value).toBe('available');
-    });
-    expect(source.apply).not.toHaveBeenCalled();
-    await updater.apply();
-    expect(source.apply).toHaveBeenCalledOnce();
-  });
-
-  it('applies an update the source announces', async () => {
-    const { source } = setup('auto');
-    await vi.advanceTimersByTimeAsync(0);
-    source.announce();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(source.apply).toHaveBeenCalledOnce();
-  });
-
-  it('only shows an update that must be downloaded', async () => {
-    const source = fakeSource('download');
     source.hasUpdate = true;
     const { updater } = setup('auto', source);
     await vi.waitFor(() => {
       expect(updater.status.value).toBe('available');
     });
+    source.announce();
     expect(source.apply).not.toHaveBeenCalled();
+  });
+
+  it('stops checking once an update is found, so it stays shown', async () => {
+    const source = fakeSource();
+    source.hasUpdate = true;
+    const { updater } = setup('auto', source);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(source.check).toHaveBeenCalledOnce();
+    expect(updater.status.value).toBe('available');
+  });
+
+  it('flushes work before applying', async () => {
+    const order: string[] = [];
+    const source = fakeSource();
+    source.apply.mockImplementation(() => {
+      order.push('apply');
+      return Promise.resolve();
+    });
+    const beforeApply = () => {
+      order.push('flush');
+      return Promise.resolve();
+    };
+    const { updater } = setup('manual', source, { beforeApply });
+    await updater.apply();
+    expect(order).toEqual(['flush', 'apply']);
   });
 
   it('shows a failed check as an error', async () => {
@@ -153,14 +140,6 @@ describe('createAppUpdater in manual mode', () => {
     const { updater, source } = setup('manual');
     source.announce();
     await updater.apply();
-    expect(source.apply).toHaveBeenCalledOnce();
-  });
-
-  it('applies a waiting update when switched to auto', async () => {
-    const { updateMode, source } = setup('manual');
-    source.announce();
-    updateMode.value = 'auto';
-    await vi.advanceTimersByTimeAsync(0);
     expect(source.apply).toHaveBeenCalledOnce();
   });
 
