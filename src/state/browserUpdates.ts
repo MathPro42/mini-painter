@@ -1,5 +1,7 @@
 import { SITE_OFFLINE_ZIP_URL, SITE_VERSION_URL } from '../utils/app/distribution';
 import { createAppUpdater } from './appUpdater';
+import { computed } from '@preact/signals-core';
+import type { AppState } from './appState';
 import type { AppUpdater, UpdateSource } from './appUpdater';
 import type { Autosave } from './autosave';
 import { createInstallPrompt } from './installPrompt';
@@ -8,6 +10,8 @@ import { createRemoteVersionSource } from './remoteVersionSource';
 import { createServiceWorkerSource } from './serviceWorkerSource';
 import type { ContainerLike } from './serviceWorkerSource';
 import type { SettingsState } from './settingsState';
+import { createUpdateNotice } from './updateNotice';
+import type { UpdateNoticeState } from './updateNotice';
 
 /** Which build is running: the site (installable) or the offline copy from the zip. */
 export type Distribution = 'site' | 'offline';
@@ -30,8 +34,6 @@ export interface BrowserUpdaterOptions {
   readonly updateMode: SettingsState['updateMode'];
   /** Saves pending work before any reload onto a new version. */
   readonly beforeApply: () => Promise<void>;
-  /** Whether work is kept across a reload, so auto mode may apply on its own. */
-  readonly canApplyNow: () => boolean;
 }
 
 /** The updater for the running build, or `null` where it can't update. */
@@ -46,7 +48,6 @@ export function getBrowserUpdater(
         source,
         updateMode: options.updateMode,
         beforeApply: options.beforeApply,
-        canApplyNow: options.canApplyNow,
       });
 }
 
@@ -105,15 +106,17 @@ export interface BuildInfo {
 
 export interface BrowserUpdates {
   readonly updater: AppUpdater | null;
+  /** Warns before an automatic update; `null` when nothing updates. */
+  readonly notice: UpdateNoticeState | null;
   readonly install: InstallPrompt | null;
 }
 
 /**
  * Starts updates and the install offer for the running build. Updates save
- * the drawing first, and auto mode only reloads while the drawing can be saved.
+ * the drawing first; in auto mode they wait until no drawing is open.
  */
 export function startBrowserUpdates(
-  settings: SettingsState,
+  state: Pick<AppState, 'updateMode' | 'svg'>,
   autosave: Autosave,
   build: BuildInfo,
   env: BrowserEnv,
@@ -122,12 +125,18 @@ export function startBrowserUpdates(
     distribution: build.distribution,
     baseUrl: build.baseUrl,
     currentVersion: build.version,
-    updateMode: settings.updateMode,
+    updateMode: state.updateMode,
     beforeApply: () => autosave.flush(),
-    canApplyNow: () => autosave.workSaved.peek(),
   };
-  return {
-    updater: build.isProduction ? getBrowserUpdater(options, env) : null,
-    install: getBrowserInstallPrompt(build.distribution, env),
-  };
+  const updater = build.isProduction ? getBrowserUpdater(options, env) : null;
+  const notice =
+    updater === null
+      ? null
+      : createUpdateNotice({
+          updater,
+          updateMode: state.updateMode,
+          drawingOpen: computed(() => state.svg.value !== null),
+          workSaved: autosave.workSaved,
+        });
+  return { updater, notice, install: getBrowserInstallPrompt(build.distribution, env) };
 }

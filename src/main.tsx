@@ -14,7 +14,7 @@ if (root === null) {
 const state = createAppState({ storage: getBrowserStorage() });
 const autosave = startAutosave(state, getBrowserWorkStorage());
 const distribution = import.meta.env.MODE === 'offline' ? 'offline' : 'site';
-const { updater, install } = startBrowserUpdates(
+const { updater, notice, install } = startBrowserUpdates(
   state,
   autosave,
   {
@@ -33,6 +33,7 @@ render(
     distribution={distribution}
     updater={updater}
     install={install}
+    updateNotice={notice}
   />,
   root,
 );

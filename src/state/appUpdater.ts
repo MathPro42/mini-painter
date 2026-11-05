@@ -35,11 +35,6 @@ export interface AppUpdaterOptions {
   readonly updateMode: ReadonlySignal<UpdateMode>;
   /** Runs before a reload, so unsaved work is written first (the autosave flush). */
   readonly beforeApply?: () => Promise<void>;
-  /**
-   * Whether auto mode may apply right now. When it can't (the drawing could not
-   * be saved), the update waits for the user, who can keep their work first.
-   */
-  readonly canApplyNow?: () => boolean;
   /** How often to look for updates while the mode is `'auto'`. */
   readonly checkEveryMs?: number;
 }
@@ -47,9 +42,9 @@ export interface AppUpdaterOptions {
 export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
- * Finds updates and applies them as the user's mode says. In `'auto'` the app
- * looks on start and every hour, and an update that can apply itself does so
- * at once. In `'manual'` it waits for the user's check and their go-ahead.
+ * Finds updates. In `'auto'` the app looks on start and every hour; in
+ * `'manual'` only when the user asks. Applying one is the caller's choice:
+ * auto mode goes through `createUpdateNotice`, which warns the user first.
  */
 export function createAppUpdater(options: AppUpdaterOptions): AppUpdater {
   const { source, updateMode, beforeApply } = options;
@@ -62,14 +57,11 @@ export function createAppUpdater(options: AppUpdaterOptions): AppUpdater {
       return;
     }
     status.value = 'available';
-    const canApply = options.canApplyNow?.() ?? true;
-    if (source.applies === 'reload' && updateMode.peek() === 'auto' && canApply) {
-      void apply();
-    }
   };
 
   const check = async (): Promise<void> => {
-    if (status.peek() === 'checking' || status.peek() === 'applying') {
+    // Once found, an update stays found: a new check would hide it while it runs.
+    if (status.peek() !== 'idle' && status.peek() !== 'up-to-date' && status.peek() !== 'error') {
       return;
     }
     status.value = 'checking';
@@ -87,12 +79,7 @@ export function createAppUpdater(options: AppUpdaterOptions): AppUpdater {
 
   const unsubscribe = source.subscribe(onAvailable);
   const stopChecks = runAutoChecks(updateMode, options.checkEveryMs, () => {
-    // Switching to auto applies an update already waiting.
-    if (status.peek() === 'available') {
-      onAvailable();
-    } else {
-      void check();
-    }
+    void check();
   });
 
   return {

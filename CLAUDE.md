@@ -142,13 +142,15 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   `version.json`. `vite build --mode offline` (`scripts/offlinePlugin.ts`) makes a copy with
   relative paths and one classic script, so it opens from `file://`, and
   `scripts/zipDirectory.js` zips it. `__APP_VERSION__` is the commit.
-  `state/appUpdater.ts` follows `state.updateMode` (`state/settingsState.ts`, auto by default):
-  auto checks on start and hourly and applies at once, after the autosave flush; manual
-  waits for the user. Its source is `serviceWorkerSource.ts` for the site (a waiting worker
-  takes over on `SKIP_WAITING`, then the page reloads) or `remoteVersionSource.ts` for the
-  offline copy (compares the site's `version.json`, then downloads the new zip).
-  `state/browserUpdates.ts` picks them from `window` (`startBrowserUpdates`, builds only). Auto
-  mode applies only while autosave can keep the drawing; every tab flushes before it reloads.
+  `state/appUpdater.ts` finds updates: in auto mode (`state/settingsState.ts`, the default)
+  on start and hourly, in manual mode on request. Its source is `serviceWorkerSource.ts` for
+  the site (a waiting worker takes over on `SKIP_WAITING`, then every tab flushes autosave
+  and reloads) or `remoteVersionSource.ts` for the offline copy (compares the site's
+  `version.json`, then downloads the new zip). In auto mode `state/updateNotice.ts` decides
+  when to apply and `components/UpdateNoticeBar.tsx` shows it: with nothing open, a 5 s
+  countdown on the empty page; with a drawing open, a bar until the drawing is closed. "Later"
+  or a switch to manual cancels it. `state/browserUpdates.ts` (`startBrowserUpdates`, builds
+  only) wires it all to `window`.
 - Palettes persist through a `KeyValueStorage` passed to `createAppState({ storage })`.
   `main.tsx` passes `localStorage` (via `state/browserStorage.ts`); tests pass a fake or
   nothing. Every palette change saves; `utils/palette/savedPalettes.ts` owns the JSON format.
@@ -226,6 +228,7 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | 2026-11-05 | Offline use: the user picks an installed PWA or a zip; both are built and served | Owner's call. The PWA updates itself; the zip needs no install and runs from a folder.                      |
+| 2026-11-05 | Auto updates never reload under an open drawing: they wait for it to be closed   | Owner's call. A reload mid-work lost the selection, view and a color drag. Nothing open → 5 s countdown.    |
 | 2026-11-05 | Updates are automatic by default; an update reloads only after autosave flushes  | Owner's call. The flush keeps the last strokes. Manual shows a dot on the title and an "Update now" button. |
 | 2026-11-05 | Own service worker; its file list is an imported, generated `sw-manifest.js`     | No Workbox. Browsers byte-compare imported scripts, so each deploy is seen as an update.                    |
 | 2026-11-05 | The offline copy is one classic script with relative paths                       | Browsers block module scripts and `crossorigin` loads on `file://`. It opens with a double-click.           |

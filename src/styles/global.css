@@ -34,6 +34,7 @@ body,
 }
 
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -698,4 +699,36 @@ body,
 
 a.button {
   text-decoration: none;
+}
+
+.update-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-selected);
+  font-size: 0.875rem;
+}
+
+/* With nothing open, the countdown sits on the empty page, not in a bar. */
+.update-notice--center {
+  position: absolute;
+  z-index: 5;
+  top: 40%;
+  left: 50%;
+  flex-direction: column;
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.update-notice__text {
+  margin: 0;
 }
