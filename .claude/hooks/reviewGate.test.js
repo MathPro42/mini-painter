@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   REVIEW_REQUEST,
   changesFingerprint,
+  countReviews,
   formatMarker,
   parseMarker,
   reviewDecision,
@@ -45,20 +46,42 @@ describe('changesFingerprint', () => {
   });
 });
 
+const reviewCall = (skill) =>
+  JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill, args: 'git' } }] },
+  });
+
+describe('countReviews', () => {
+  it('counts code-review skill calls, plugin-scoped ones too', () => {
+    const transcript = [
+      reviewCall('code-review'),
+      JSON.stringify({ type: 'user', message: { content: 'please run code-review' } }),
+      reviewCall('other-skill'),
+      reviewCall('anthropic-skills:code-review'),
+    ].join('\n');
+    expect(countReviews(transcript)).toBe(2);
+  });
+
+  it('skips a partly written line and an empty transcript', () => {
+    expect(countReviews(`${reviewCall('code-review')}\n{"message":{"content":[{"code-review`)).toBe(
+      1,
+    );
+    expect(countReviews('')).toBe(0);
+  });
+});
+
 describe('reviewDecision', () => {
   const FP = 'a'.repeat(64);
   const OTHER = 'b'.repeat(64);
-  const base = { stopHookActive: false, fingerprint: FP, marker: null };
+  const base = { stopHookActive: false, fingerprint: FP, marker: null, reviewCount: 3 };
+  const requested = { state: 'requested', fingerprint: FP, reviews: 3 };
   const STOP = { request: null, record: null };
 
-  it('asks for a review of changes nobody was asked about, and records that', () => {
-    expect(reviewDecision(base)).toEqual({
-      request: REVIEW_REQUEST,
-      record: { state: 'requested', fingerprint: FP },
-    });
-    expect(
-      reviewDecision({ ...base, marker: { state: 'reviewed', fingerprint: OTHER } }).request,
-    ).toBe(REVIEW_REQUEST);
+  it('asks for a review of changes nobody was asked about, noting the reviews so far', () => {
+    expect(reviewDecision(base)).toEqual({ request: REVIEW_REQUEST, record: requested });
+    const old = { state: 'reviewed', fingerprint: OTHER, reviews: 0 };
+    expect(reviewDecision({ ...base, marker: old }).request).toBe(REVIEW_REQUEST);
   });
 
   it('lets Claude stop when there is nothing to review', () => {
@@ -66,33 +89,42 @@ describe('reviewDecision', () => {
   });
 
   it('asks once for the same changes, reviewed or skipped', () => {
-    expect(reviewDecision({ ...base, marker: { state: 'reviewed', fingerprint: FP } })).toEqual(
-      STOP,
-    );
-    expect(reviewDecision({ ...base, marker: { state: 'requested', fingerprint: FP } })).toEqual(
-      STOP,
-    );
+    expect(reviewDecision({ ...base, marker: { ...requested, state: 'reviewed' } })).toEqual(STOP);
+    expect(reviewDecision({ ...base, marker: requested })).toEqual(STOP);
   });
 
-  it("counts a requested review's fixes as reviewed at the next stop", () => {
+  it("counts a review's fixes as reviewed at the next stop", () => {
     expect(
       reviewDecision({
         stopHookActive: true,
         fingerprint: OTHER,
-        marker: { state: 'requested', fingerprint: FP },
+        marker: requested,
+        reviewCount: 4,
       }),
-    ).toEqual({ request: null, record: { state: 'reviewed', fingerprint: OTHER } });
+    ).toEqual({ request: null, record: { state: 'reviewed', fingerprint: OTHER, reviews: 0 } });
   });
 
-  it('records nothing on a retry another stop hook caused', () => {
+  it('records nothing when no review ran, e.g. the test hook sent Claude back', () => {
     expect(
       reviewDecision({
         stopHookActive: true,
         fingerprint: OTHER,
-        marker: { state: 'reviewed', fingerprint: FP },
+        marker: requested,
+        reviewCount: 3,
       }),
     ).toEqual(STOP);
+  });
+
+  it('records nothing on a retry without a pending request', () => {
     expect(reviewDecision({ ...base, stopHookActive: true })).toEqual(STOP);
+    expect(
+      reviewDecision({
+        ...base,
+        stopHookActive: true,
+        marker: { ...requested, state: 'reviewed' },
+        reviewCount: 9,
+      }),
+    ).toEqual(STOP);
   });
 
   it('names the skill and the independent reviewer', () => {
@@ -103,16 +135,19 @@ describe('reviewDecision', () => {
 
 describe('markers', () => {
   it('read back what they store', () => {
-    const marker = { state: 'requested', fingerprint: 'c'.repeat(64) };
+    const marker = { state: 'requested', fingerprint: 'c'.repeat(64), reviews: 2 };
     expect(parseMarker(formatMarker(marker))).toEqual(marker);
   });
 
-  it.each([[null], [''], ['done abc'], [`reviewed ${'z'.repeat(64)}`], ['a'.repeat(64)]])(
-    'are null for %j',
-    (text) => {
-      expect(parseMarker(text)).toBeNull();
-    },
-  );
+  it.each([
+    [null],
+    [''],
+    ['done abc 1'],
+    [`reviewed ${'z'.repeat(64)} 1`],
+    [`reviewed ${'a'.repeat(64)}`],
+  ])('are null for %j', (text) => {
+    expect(parseMarker(text)).toBeNull();
+  });
 });
 
 describe('requireCodeReview.js', () => {
@@ -138,9 +173,12 @@ describe('requireCodeReview.js', () => {
     return { dir, git };
   }
 
-  function stop(cwd, stopHookActive = false) {
+  /** Stops in `cwd`; `reviews` is how many code-review calls the transcript holds. */
+  function stop(cwd, stopHookActive = false, reviews = 0) {
+    const transcript = join(cwd, '.git', 'transcript.jsonl');
+    writeFileSync(transcript, Array(reviews).fill(reviewCall('code-review')).join('\n'));
     return spawnSync('node', [join(import.meta.dirname, 'requireCodeReview.js')], {
-      input: JSON.stringify({ cwd, stop_hook_active: stopHookActive }),
+      input: JSON.stringify({ cwd, stop_hook_active: stopHookActive, transcript_path: transcript }),
       encoding: 'utf8',
     });
   }
@@ -173,9 +211,19 @@ describe('requireCodeReview.js', () => {
     writeFileSync(join(dir, 'cube.ts'), 'export const side = 2;\n');
     expect(stop(dir).status).toBe(2);
     writeFileSync(join(dir, 'cube.ts'), 'export const side = 3;\n');
-    expect(stop(dir, true).status).toBe(0);
-    expect(stop(dir).status).toBe(0);
+    expect(stop(dir, true, 1).status).toBe(0);
+    expect(stop(dir, false, 1).status).toBe(0);
     writeFileSync(join(dir, 'sphere.ts'), 'export const radius = 1;\n');
+    expect(stop(dir).status).toBe(2);
+  });
+
+  it('asks again next turn when the retry came without a review', () => {
+    const { dir } = repo();
+    writeFileSync(join(dir, 'cube.ts'), 'export const side = 2;\n');
+    expect(stop(dir).status).toBe(2);
+    // The test hook sent Claude back too; it fixed a test and stopped without reviewing.
+    writeFileSync(join(dir, 'cube.ts'), 'export const side = 3;\n');
+    expect(stop(dir, true).status).toBe(0);
     expect(stop(dir).status).toBe(2);
   });
 
@@ -194,9 +242,14 @@ describe('requireCodeReview.js', () => {
     expect(stop(dir, true).status).toBe(0);
   });
 
-  it('never blocks outside a repository', () => {
+  it('never blocks outside a repository, and says the gate was skipped', () => {
     const dir = mkdtempSync(join(tmpdir(), 'no-repo-'));
     dirs.push(dir);
-    expect(stop(dir).status).toBe(0);
+    const result = spawnSync('node', [join(import.meta.dirname, 'requireCodeReview.js')], {
+      input: JSON.stringify({ cwd: dir }),
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('Review gate skipped');
   });
 });
