@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import type { AppState } from '../state/appState';
 import type { AppUpdater, UpdateStatus } from '../state/appUpdater';
+import { UPDATE_MODES } from '../utils/app/updateMode';
 import type { UpdateMode } from '../utils/app/updateMode';
 import { useSignalValue } from './useSignalValue';
 
@@ -29,7 +30,7 @@ export function UpdateSettings({ state, updater }: UpdateSettingsProps): JSX.Ele
   return (
     <fieldset class="settings__section">
       <legend class="settings__heading">Updates</legend>
-      {(['auto', 'manual'] as const).map((value) => (
+      {UPDATE_MODES.map((value) => (
         <label key={value} class="settings__choice">
           <input
             type="radio"

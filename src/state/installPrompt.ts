@@ -65,7 +65,15 @@ export function createInstallPrompt(target: InstallTarget, standalone: boolean):
       // An offer can be shown once only.
       offer = null;
       canInstall.value = false;
-      await shown.prompt();
+      try {
+        await shown.prompt();
+      } catch (error) {
+        // Not shown (Chromium refuses a prompt outside a user gesture), so it stays usable.
+        console.warn('Could not show the install prompt', error);
+        offer = shown;
+        canInstall.value = true;
+        return false;
+      }
       return (await shown.userChoice).outcome === 'accepted';
     },
     dispose: () => {

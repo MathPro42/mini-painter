@@ -21,7 +21,14 @@ const PANEL_ID = 'settings-panel';
 export function SettingsMenu(props: SettingsMenuProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   useCloseOnOutsideOrEscape(open, root, setOpen);
+  // A keyboard user lands in the panel, not back on the title.
+  useEffect(() => {
+    if (open) {
+      panel.current?.querySelector<HTMLElement>('button, a[href], input:checked')?.focus();
+    }
+  }, [open]);
 
   return (
     <div class="settings" ref={root}>
@@ -41,7 +48,7 @@ export function SettingsMenu(props: SettingsMenuProps): JSX.Element {
         </button>
       </h1>
       {open && (
-        <div id={PANEL_ID} class="settings__panel" role="dialog" aria-label="Settings">
+        <div id={PANEL_ID} ref={panel} class="settings__panel" role="dialog" aria-label="Settings">
           <InstallOptions distribution={props.distribution} install={props.install} />
           <UpdateSettings state={props.state} updater={props.updater} />
           <p class="settings__version">Version {__APP_VERSION__}</p>
@@ -74,6 +81,7 @@ function useCloseOnOutsideOrEscape(
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         setOpen(false);
+        root.current?.querySelector<HTMLElement>('.settings__toggle')?.focus();
       }
     };
     document.addEventListener('pointerdown', onPointerDown);
