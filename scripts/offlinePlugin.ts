@@ -1,16 +1,9 @@
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
 
-/** Files of the installable app that mean nothing in a copy opened from disk. */
-const PWA_ONLY = [
-  'sw.js',
-  'manifest.webmanifest',
-  'icon-192.png',
-  'icon-512.png',
-  'icon-maskable-512.png',
-];
-const PWA_ONLY_TAGS = /\s*<link rel="(manifest|apple-touch-icon)"[^>]*>/g;
+/** The installable app's links, which mean nothing in a copy opened from disk. */
+const PWA_ONLY_TAGS = /\s*<link\b[^>]*\brel=["'](?:manifest|apple-touch-icon)["'][^>]*>/g;
 
 const README = `Mini Painter, offline copy
 ==========================
@@ -25,10 +18,24 @@ version is out and download it. Unzip it over this folder.
 `;
 
 /**
- * Makes the offline build open straight from disk (`file://`). Browsers refuse
- * module scripts and \`crossorigin\` loads from files, so the bundle is one
- * classic script that runs once the page has parsed.
+ * The page as the offline copy needs it. Browsers refuse module scripts and
+ * `crossorigin` loads from files, so the bundle is one classic script that
+ * runs once the page has parsed; the installable app's links go.
  */
+export function toOfflineHtml(html: string): string {
+  return html
+    .replace(PWA_ONLY_TAGS, '')
+    .replaceAll(' crossorigin', '')
+    .replaceAll('<script type="module"', '<script defer');
+}
+
+/** The service worker, the web app manifest and every icon it lists. */
+export function pwaOnlyFiles(manifestJson: string): string[] {
+  const manifest = JSON.parse(manifestJson) as { icons?: readonly { src: string }[] };
+  return ['sw.js', 'manifest.webmanifest', ...(manifest.icons ?? []).map((icon) => icon.src)];
+}
+
+/** Makes the offline build open straight from disk (`file://`). */
 export function offlinePlugin(): Plugin {
   let outDir = '';
   return {
@@ -37,20 +44,14 @@ export function offlinePlugin(): Plugin {
     configResolved(config) {
       outDir = join(config.root, config.build.outDir);
     },
-    transformIndexHtml: {
-      order: 'post',
-      handler: (html) =>
-        html
-          .replace(PWA_ONLY_TAGS, '')
-          .replaceAll(' crossorigin', '')
-          .replaceAll('<script type="module"', '<script defer'),
-    },
+    transformIndexHtml: { order: 'post', handler: toOfflineHtml },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'README.txt', source: README });
     },
     // Vite copies public/ after the bundle is written, so the extras go last.
     closeBundle() {
-      for (const file of PWA_ONLY) {
+      const manifest = readFileSync(join(outDir, 'manifest.webmanifest'), 'utf8');
+      for (const file of pwaOnlyFiles(manifest)) {
         rmSync(join(outDir, file), { force: true });
       }
     },

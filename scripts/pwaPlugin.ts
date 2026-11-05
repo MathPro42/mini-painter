@@ -24,12 +24,7 @@ export function pwaPlugin(version: string): Plugin {
     generateBundle: {
       order: 'post',
       handler(_options, bundle) {
-        const files = ['./', ...Object.keys(bundle), ...listFiles(publicDir)]
-          .filter((file) => !NOT_CACHED.test(file) && file !== 'index.html')
-          .sort();
-        // Bundle names carry content hashes, so their hash tells two builds of one commit apart.
-        const digest = createHash('sha256').update(files.join('\n')).digest('hex').slice(0, 8);
-        const manifest = { version: `${version}-${digest}`, files };
+        const manifest = createPrecacheManifest(version, Object.keys(bundle), listFiles(publicDir));
         this.emitFile({
           type: 'asset',
           fileName: 'sw-manifest.js',
@@ -45,7 +40,30 @@ export function pwaPlugin(version: string): Plugin {
   };
 }
 
-function listFiles(dir: string): string[] {
+export interface PrecacheManifest {
+  readonly version: string;
+  readonly files: readonly string[];
+}
+
+/**
+ * What the service worker precaches, as paths relative to its scope. The page
+ * itself is cached as `./`, the URL people open, instead of `index.html`.
+ */
+export function createPrecacheManifest(
+  version: string,
+  bundleFiles: readonly string[],
+  publicFiles: readonly string[],
+): PrecacheManifest {
+  const files = ['./', ...bundleFiles, ...publicFiles]
+    .filter((file) => !NOT_CACHED.test(file) && file !== 'index.html')
+    .sort();
+  // Bundle names carry content hashes, so their hash tells two builds of one commit apart.
+  const digest = createHash('sha256').update(files.join('\n')).digest('hex').slice(0, 8);
+  return { version: `${version}-${digest}`, files };
+}
+
+/** Every file under `dir`, as `/`-separated relative paths; none when there is no dir. */
+export function listFiles(dir: string): string[] {
   if (dir === '') {
     return [];
   }
