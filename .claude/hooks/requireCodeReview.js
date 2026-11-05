@@ -5,7 +5,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { changesFingerprint, reviewRequest } from './reviewGate.js';
+import { changesFingerprint, formatMarker, parseMarker, reviewDecision } from './reviewGate.js';
 
 const input = JSON.parse(readFileSync(0, 'utf8'));
 const cwd = input.cwd ?? process.cwd();
@@ -19,15 +19,17 @@ const git = (...args) =>
 
 try {
   const marker = join(cwd, git('rev-parse', '--git-path', 'claude-reviewed-changes').trim());
+  // A binary file shows as one line, but its `index <old>..<new>` hashes still change.
   const fingerprint = changesFingerprint(git('diff', baseCommit()), untrackedFiles());
-  const request = reviewRequest({
+  const { request, record } = reviewDecision({
     stopHookActive: input.stop_hook_active === true,
     fingerprint,
-    reviewedFingerprint: readMarker(marker),
+    marker: parseMarker(readMarker(marker)),
   });
+  if (record !== null) {
+    writeFileSync(marker, formatMarker(record));
+  }
   if (request !== null) {
-    // Recorded now: if Claude skips the review, the next stop must not block again.
-    writeFileSync(marker, `${fingerprint}\n`);
     process.stderr.write(`${request}\n`);
     process.exit(2);
   }
@@ -37,7 +39,10 @@ try {
 
 /** Where the branch left the default branch; the default branch itself has nothing to review. */
 function baseCommit() {
-  for (const base of ['origin/main', 'main']) {
+  for (const base of [remoteDefaultBranch(), 'origin/main', 'main']) {
+    if (base === null) {
+      continue;
+    }
     try {
       return git('merge-base', 'HEAD', base).trim();
     } catch {
@@ -45,6 +50,15 @@ function baseCommit() {
     }
   }
   throw new Error('No base branch');
+}
+
+/** The remote's default branch (`origin/HEAD`), when the clone knows it. */
+function remoteDefaultBranch() {
+  try {
+    return git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD').trim();
+  } catch {
+    return null;
+  }
 }
 
 function untrackedFiles() {

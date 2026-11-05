@@ -26,13 +26,34 @@ export function changesFingerprint(diff, untracked) {
 }
 
 /**
- * Why Claude must not stop yet, or `null` when it may. It may when a stop hook already
- * sent it back this turn (so it never loops), when nothing changed, or when the reviewer
- * already saw exactly these changes.
+ * What the hook does at a stop. `marker` is what it recorded last time: the changes it
+ * asked a review for (`requested`) or the ones a review covered (`reviewed`), or `null`.
+ * Returns the request to send Claude back with (`null` to let it stop) and the marker to
+ * record (`null` to keep the old one).
+ *
+ * - Changes nobody was asked to review: send Claude to the review, once.
+ * - The stop after that review: the fixes it led to count as reviewed, so the next turn
+ *   does not start a new review over them. Any other stop-hook retry just stops, so it
+ *   never loops.
  */
-export function reviewRequest({ stopHookActive, fingerprint, reviewedFingerprint }) {
-  if (stopHookActive || fingerprint === null || fingerprint === reviewedFingerprint) {
-    return null;
+export function reviewDecision({ stopHookActive, fingerprint, marker }) {
+  if (stopHookActive) {
+    const fixesReviewed = marker?.state === 'requested' && fingerprint !== null;
+    return { request: null, record: fixesReviewed ? { state: 'reviewed', fingerprint } : null };
   }
-  return REVIEW_REQUEST;
+  if (fingerprint === null || fingerprint === marker?.fingerprint) {
+    return { request: null, record: null };
+  }
+  return { request: REVIEW_REQUEST, record: { state: 'requested', fingerprint } };
+}
+
+/** A marker as the hook stores it: `<state> <fingerprint>`. */
+export function formatMarker({ state, fingerprint }) {
+  return `${state} ${fingerprint}\n`;
+}
+
+/** A stored marker, or `null` for an unknown one (it then asks again). */
+export function parseMarker(text) {
+  const match = /^(requested|reviewed) ([0-9a-f]{64})\s*$/.exec(text ?? '');
+  return match === null ? null : { state: match[1], fingerprint: match[2] };
 }
