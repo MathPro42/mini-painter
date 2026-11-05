@@ -91,7 +91,7 @@ export default defineConfig([
       'src/**/*.test.{ts,tsx}',
       'src/test/**',
       '.claude/**/*.test.js',
-      'scripts/**/*.test.js',
+      'scripts/**/*.test.{js,ts}',
     ],
     rules: { 'max-lines-per-function': 'off' },
   },

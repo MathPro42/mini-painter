@@ -31,7 +31,7 @@ export default mergeConfig(
         {
           // Build scripts: Node, outside the app.
           extends: true,
-          test: { name: 'scripts', environment: 'node', include: ['scripts/**/*.test.js'] },
+          test: { name: 'scripts', environment: 'node', include: ['scripts/**/*.test.{js,ts}'] },
         },
       ],
       coverage: {
