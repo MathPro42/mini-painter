@@ -26,6 +26,7 @@ The user picks the mode as the skill's argument. Without one, use `git`.
 - In the git modes, review only the changed lines and what they break. Read the surrounding code, callers and tests for context, but do not report problems in code the change did not touch.
 - If the selected mode has nothing to review, say so and ask the user what to review instead.
 - If the directory is not a git repository, the git modes cannot run: say so and ask whether to use `all`.
+- In `all` mode, read in this order, each part with the tests next to it: code that reads outside input (files, network, user input, storage), where security and data-loss bugs live; then shared state and persistence; then core logic; then UI and glue code. The report states what was read in full, skimmed, or not read.
 
 ## How to run a review
 
@@ -137,6 +138,7 @@ Use this structure so reviews are scannable and comparable:
 
 ## Summary
 <2-4 sentences: what the code does, overall verdict (Approve / Approve with changes / Request changes)>
+<all mode only: coverage, i.e. what was read in full, skimmed, and not read>
 
 ## Findings
 ### Blocking (must fix: bug, security, data loss, broken behavior, absolute project rule)
