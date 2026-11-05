@@ -6,8 +6,12 @@ const { version, files } = self.precache;
 const CACHE = `mini-painter-${version}`;
 const scopeUrl = (file) => new URL(file, self.registration.scope).href;
 
+// `reload` skips the HTTP cache. Pages caches files for minutes, so a stale index.html
+// could point at the last deploy's bundles, which the server no longer has.
+const fresh = (file) => new Request(scopeUrl(file), { cache: 'reload' });
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(files.map(scopeUrl))));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(files.map(fresh))));
 });
 
 self.addEventListener('activate', (event) => {
