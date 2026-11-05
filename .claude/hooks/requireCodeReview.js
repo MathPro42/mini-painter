@@ -5,7 +5,13 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { changesFingerprint, formatMarker, parseMarker, reviewDecision } from './reviewGate.js';
+import {
+  changesFingerprint,
+  countReviews,
+  formatMarker,
+  parseMarker,
+  reviewDecision,
+} from './reviewGate.js';
 
 const input = JSON.parse(readFileSync(0, 'utf8'));
 const cwd = input.cwd ?? process.cwd();
@@ -24,7 +30,8 @@ try {
   const { request, record } = reviewDecision({
     stopHookActive: input.stop_hook_active === true,
     fingerprint,
-    marker: parseMarker(readMarker(marker)),
+    marker: parseMarker(readText(marker)),
+    reviewCount: countReviews(readText(input.transcript_path) ?? ''),
   });
   if (record !== null) {
     writeFileSync(marker, formatMarker(record));
@@ -33,8 +40,12 @@ try {
     process.stderr.write(`${request}\n`);
     process.exit(2);
   }
-} catch {
-  // Not a repository, no base branch, or git failed: never trap Claude over a hook error.
+} catch (error) {
+  // Not a repository, no base branch, or git failed: never trap Claude over a hook error,
+  // but say the gate did nothing.
+  process.stderr.write(
+    `Review gate skipped: ${error instanceof Error ? error.message : String(error)}\n`,
+  );
 }
 
 /** Where the branch left the default branch; the default branch itself has nothing to review. */
@@ -68,7 +79,11 @@ function untrackedFiles() {
   );
 }
 
-function readMarker(path) {
+/** A file's text, or `null` when it can't be read. */
+function readText(path) {
+  if (typeof path !== 'string') {
+    return null;
+  }
   try {
     return readFileSync(path, 'utf8').trim();
   } catch {

@@ -26,34 +26,80 @@ export function changesFingerprint(diff, untracked) {
 }
 
 /**
+ * How many times the session ran the code-review skill, from its transcript (JSON lines).
+ * The proof a review happened: a stop-hook retry alone proves nothing, since any Stop hook
+ * (the test run too) can cause one.
+ */
+export function countReviews(transcript) {
+  let count = 0;
+  for (const line of transcript.split('\n')) {
+    if (!line.includes('code-review')) {
+      continue;
+    }
+    try {
+      const content = JSON.parse(line).message?.content;
+      if (Array.isArray(content)) {
+        count += content.filter(isReviewCall).length;
+      }
+    } catch {
+      // A partly written last line: it is read in full at the next stop.
+    }
+  }
+  return count;
+}
+
+function isReviewCall(block) {
+  const skill = block?.input?.skill;
+  return (
+    block?.type === 'tool_use' &&
+    block.name === 'Skill' &&
+    (skill === 'code-review' || skill?.endsWith(':code-review') === true)
+  );
+}
+
+/**
  * What the hook does at a stop. `marker` is what it recorded last time: the changes it
- * asked a review for (`requested`) or the ones a review covered (`reviewed`), or `null`.
+ * asked a review for and how many reviews had run then (`requested`), or the changes a
+ * review covered (`reviewed`), or `null`. `reviewCount` is how many have run now.
  * Returns the request to send Claude back with (`null` to let it stop) and the marker to
  * record (`null` to keep the old one).
  *
  * - Changes nobody was asked to review: send Claude to the review, once.
- * - The stop after that review: the fixes it led to count as reviewed, so the next turn
- *   does not start a new review over them. Any other stop-hook retry just stops, so it
- *   never loops.
+ * - The stop after that review: if a review ran since the request, the fixes it led to
+ *   count as reviewed, so the next turn does not start a new review over them. Without a
+ *   review, nothing is recorded, and the next turn asks again if the code changed.
+ * - A stop-hook retry never blocks again, so it never loops.
  */
-export function reviewDecision({ stopHookActive, fingerprint, marker }) {
+export function reviewDecision({ stopHookActive, fingerprint, marker, reviewCount }) {
   if (stopHookActive) {
-    const fixesReviewed = marker?.state === 'requested' && fingerprint !== null;
-    return { request: null, record: fixesReviewed ? { state: 'reviewed', fingerprint } : null };
+    const reviewRan = marker?.state === 'requested' && reviewCount > marker.reviews;
+    return {
+      request: null,
+      record: reviewRan && fingerprint !== null ? reviewed(fingerprint) : null,
+    };
   }
   if (fingerprint === null || fingerprint === marker?.fingerprint) {
     return { request: null, record: null };
   }
-  return { request: REVIEW_REQUEST, record: { state: 'requested', fingerprint } };
+  return {
+    request: REVIEW_REQUEST,
+    record: { state: 'requested', fingerprint, reviews: reviewCount },
+  };
 }
 
-/** A marker as the hook stores it: `<state> <fingerprint>`. */
-export function formatMarker({ state, fingerprint }) {
-  return `${state} ${fingerprint}\n`;
+function reviewed(fingerprint) {
+  return { state: 'reviewed', fingerprint, reviews: 0 };
+}
+
+/** A marker as the hook stores it: `<state> <fingerprint> <reviews>`. */
+export function formatMarker({ state, fingerprint, reviews }) {
+  return `${state} ${fingerprint} ${String(reviews)}\n`;
 }
 
 /** A stored marker, or `null` for an unknown one (it then asks again). */
 export function parseMarker(text) {
-  const match = /^(requested|reviewed) ([0-9a-f]{64})\s*$/.exec(text ?? '');
-  return match === null ? null : { state: match[1], fingerprint: match[2] };
+  const match = /^(requested|reviewed) ([0-9a-f]{64}) (\d+)\s*$/.exec(text ?? '');
+  return match === null
+    ? null
+    : { state: match[1], fingerprint: match[2], reviews: Number(match[3]) };
 }

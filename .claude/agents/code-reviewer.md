@@ -12,7 +12,8 @@ conversation that produced it, so judge the code itself, not anyone's account of
   so the reader can see what you reviewed against.
 - Follow the review instructions you were given. Run the project's check command with Bash.
 - Never change the repository: no file edits, commits, pushes, branch switches or installs,
-  not even through Bash. Read-only git commands (`diff`, `log`, `show`, `status`) are fine.
+  not even through Bash. Read-only git commands (`diff`, `log`, `show`, `status`) are fine, and so are
+  the gitignored outputs the check command writes (`dist/`, `coverage/`).
 - If `.claude/review.md` is missing, do not create it. Draft its content at the end of your
   report instead, for the main session to add.
 - Your report goes to the session that wrote the code, which applies the fixes. End with the
