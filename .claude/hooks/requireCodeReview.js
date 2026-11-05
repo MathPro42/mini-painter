@@ -4,7 +4,7 @@
 // it is never committed and each clone keeps its own.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   changesFingerprint,
   countReviews,
@@ -14,7 +14,7 @@ import {
 } from './reviewGate.js';
 
 const input = JSON.parse(readFileSync(0, 'utf8'));
-const cwd = input.cwd ?? process.cwd();
+let cwd = input.cwd ?? process.cwd();
 const git = (...args) =>
   execFileSync('git', args, {
     cwd,
@@ -24,7 +24,10 @@ const git = (...args) =>
   });
 
 try {
-  const marker = join(cwd, git('rev-parse', '--git-path', 'claude-reviewed-changes').trim());
+  // From the top, so new files anywhere count, whichever folder Claude is in.
+  cwd = git('rev-parse', '--show-toplevel').trim();
+  // resolve, not join: in a linked worktree git prints an absolute path.
+  const marker = resolve(cwd, git('rev-parse', '--git-path', 'claude-reviewed-changes').trim());
   // A binary file shows as one line, but its `index <old>..<new>` hashes still change.
   const fingerprint = changesFingerprint(git('diff', baseCommit()), untrackedFiles());
   const { request, record } = reviewDecision({

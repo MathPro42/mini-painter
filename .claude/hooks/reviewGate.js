@@ -38,14 +38,20 @@ export function countReviews(transcript) {
     }
     try {
       const content = JSON.parse(line).message?.content;
-      if (Array.isArray(content)) {
-        count += content.filter(isReviewCall).length;
-      }
+      const blocks = Array.isArray(content) ? content : [{ type: 'text', text: content }];
+      count += blocks.filter((block) => isReviewCall(block) || isTypedReview(block)).length;
     } catch {
       // A partly written last line: it is read in full at the next stop.
     }
   }
   return count;
+}
+
+/** The user typed `/code-review`: the transcript records the command by name. */
+const TYPED_REVIEW = /<command-name>\/(?:[\w-]+:)?code-review<\/command-name>/;
+
+function isTypedReview(block) {
+  return block?.type === 'text' && typeof block.text === 'string' && TYPED_REVIEW.test(block.text);
 }
 
 function isReviewCall(block) {
@@ -65,20 +71,18 @@ function isReviewCall(block) {
  * record (`null` to keep the old one).
  *
  * - Changes nobody was asked to review: send Claude to the review, once.
- * - The stop after that review: if a review ran since the request, the fixes it led to
- *   count as reviewed, so the next turn does not start a new review over them. Without a
- *   review, nothing is recorded, and the next turn asks again if the code changed.
+ * - The first stop after a review ran since the request: the fixes it led to count as
+ *   reviewed, so no new review starts over them. This goes by the transcript, not by
+ *   `stopHookActive`: some hosts deliver the request as a new turn, without the flag.
+ *   Without a review, nothing is recorded, and changed code is asked about again.
  * - A stop-hook retry never blocks again, so it never loops.
  */
 export function reviewDecision({ stopHookActive, fingerprint, marker, reviewCount }) {
-  if (stopHookActive) {
-    const reviewRan = marker?.state === 'requested' && reviewCount > marker.reviews;
-    return {
-      request: null,
-      record: reviewRan && fingerprint !== null ? reviewed(fingerprint) : null,
-    };
+  const reviewRan = marker?.state === 'requested' && reviewCount > marker.reviews;
+  if (reviewRan && fingerprint !== null) {
+    return { request: null, record: reviewed(fingerprint) };
   }
-  if (fingerprint === null || fingerprint === marker?.fingerprint) {
+  if (stopHookActive || fingerprint === null || fingerprint === marker?.fingerprint) {
     return { request: null, record: null };
   }
   return {
