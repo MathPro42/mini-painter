@@ -21,7 +21,8 @@ names are enforced by the `.claude/hooks/checkBranchName.js` hook.
   repo. (source: CLAUDE.md)
 - Never disable a lint rule to get past it: code that breaks a layer rule moves to the right
   layer. (source: CLAUDE.md)
-- `main.tsx` only creates state, starts autosave and mounts `<App/>`. (source: CLAUDE.md)
+- `main.tsx` only creates state, starts autosave and updates, and mounts `<App/>`. (source:
+  CLAUDE.md)
 - `components/Viewport.tsx` is the only bridge between UI and rendering; rendering never calls
   back into components and never writes state. (source: CLAUDE.md)
 - Shared logic (color math, file parsing, geometry) lives in `utils/` and is never duplicated.

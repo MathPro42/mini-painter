@@ -35,6 +35,11 @@ export interface AppUpdaterOptions {
   readonly updateMode: ReadonlySignal<UpdateMode>;
   /** Runs before a reload, so unsaved work is written first (the autosave flush). */
   readonly beforeApply?: () => Promise<void>;
+  /**
+   * Whether auto mode may apply right now. When it can't (the drawing could not
+   * be saved), the update waits for the user, who can keep their work first.
+   */
+  readonly canApplyNow?: () => boolean;
   /** How often to look for updates while the mode is `'auto'`. */
   readonly checkEveryMs?: number;
 }
@@ -57,7 +62,8 @@ export function createAppUpdater(options: AppUpdaterOptions): AppUpdater {
       return;
     }
     status.value = 'available';
-    if (source.applies === 'reload' && updateMode.peek() === 'auto') {
+    const canApply = options.canApplyNow?.() ?? true;
+    if (source.applies === 'reload' && updateMode.peek() === 'auto' && canApply) {
       void apply();
     }
   };

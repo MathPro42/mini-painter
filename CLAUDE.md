@@ -49,7 +49,7 @@ Jekyll deploy on every push, and if it finishes last it publishes the raw repo (
 
 ```
 src/
-  main.tsx        entry point: creates state, starts autosave, mounts <App/>. Nothing else.
+  main.tsx        entry point: creates state, starts autosave and updates, mounts <App/>.
   components/     Preact UI (DOM, events, layout)
   rendering/      Three.js (scene, camera, renderer, model loading)
   state/          reactive app state (@preact/signals-core stores)
@@ -147,7 +147,8 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   waits for the user. Its source is `serviceWorkerSource.ts` for the site (a waiting worker
   takes over on `SKIP_WAITING`, then the page reloads) or `remoteVersionSource.ts` for the
   offline copy (compares the site's `version.json`, then downloads the new zip).
-  `state/browserUpdates.ts` picks them from `window`; `main.tsx` starts them in builds only.
+  `state/browserUpdates.ts` picks them from `window` (`startBrowserUpdates`, builds only). Auto
+  mode applies only while autosave can keep the drawing; every tab flushes before it reloads.
 - Palettes persist through a `KeyValueStorage` passed to `createAppState({ storage })`.
   `main.tsx` passes `localStorage` (via `state/browserStorage.ts`); tests pass a fake or
   nothing. Every palette change saves; `utils/palette/savedPalettes.ts` owns the JSON format.
