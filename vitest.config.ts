@@ -28,6 +28,11 @@ export default mergeConfig(
           extends: true,
           test: { name: 'hooks', environment: 'node', include: ['.claude/hooks/**/*.test.js'] },
         },
+        {
+          // Build scripts: Node, outside the app.
+          extends: true,
+          test: { name: 'scripts', environment: 'node', include: ['scripts/**/*.test.js'] },
+        },
       ],
       coverage: {
         provider: 'v8',
