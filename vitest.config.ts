@@ -2,7 +2,7 @@ import { defineConfig, mergeConfig } from 'vitest/config';
 import viteConfig from './vite.config.ts';
 
 export default mergeConfig(
-  viteConfig,
+  viteConfig({ command: 'serve', mode: 'test' }),
   defineConfig({
     // Binary spreadsheet fixtures load in tests as data URLs (`import x from './a.xls?inline'`).
     assetsInclude: ['**/*.xls', '**/*.xlsx'],
