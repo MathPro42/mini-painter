@@ -5,10 +5,12 @@ import { createPaintState } from './paintState';
 import type { PaintState } from './paintState';
 import { createPaletteState } from './paletteState';
 import type { KeyValueStorage, PaletteState } from './paletteState';
+import { createSettingsState } from './settingsState';
+import type { SettingsState } from './settingsState';
 
 export const DEFAULT_CUBE_COLOR = '#c8553d';
 
-export interface AppState extends PaintState, PaletteState {
+export interface AppState extends PaintState, PaletteState, SettingsState {
   /** Current cube color as lowercase `#rrggbb`. */
   readonly cubeColor: ReadonlySignal<string>;
   /** Sets the cube color. Throws a RangeError when `value` is not a hex color. */
@@ -18,7 +20,7 @@ export interface AppState extends PaintState, PaletteState {
 export interface AppStateOptions {
   /** Starting cube color; any hex form. Defaults to DEFAULT_CUBE_COLOR. */
   readonly cubeColor?: string;
-  /** Keeps palettes between visits. Without it, palettes last until the page closes. */
+  /** Keeps palettes and settings between visits. Without it, they last until the page closes. */
   readonly storage?: KeyValueStorage | null;
 }
 
@@ -35,5 +37,6 @@ export function createAppState(options: AppStateOptions = {}): AppState {
     },
     ...createPaintState(),
     ...createPaletteState(options.storage ?? null),
+    ...createSettingsState(options.storage ?? null),
   };
 }
