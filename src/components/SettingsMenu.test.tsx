@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAppState } from '../state/appState';
 import type { AppUpdater, UpdateStatus } from '../state/appUpdater';
 import type { InstallPrompt } from '../state/installPrompt';
+import { UPDATE_MODES } from '../utils/app/updateMode';
 import { SettingsMenu } from './SettingsMenu';
 import type { SettingsMenuProps } from './SettingsMenu';
 
@@ -64,6 +65,14 @@ describe('SettingsMenu', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('moves focus into the panel and back to the title on Escape', () => {
+    renderMenu({ install: fakeInstall(true) });
+    openMenu();
+    expect(screen.getByRole('button', { name: 'Install app' })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(toggle()).toHaveFocus();
+  });
+
   it('shows the version', () => {
     renderMenu();
     expect(openMenu()).toHaveTextContent(`Version ${__APP_VERSION__}`);
@@ -118,6 +127,12 @@ describe('SettingsMenu offline options', () => {
 });
 
 describe('SettingsMenu updates', () => {
+  it('offers every update mode', () => {
+    renderMenu();
+    openMenu();
+    expect(screen.getAllByRole('radio')).toHaveLength(UPDATE_MODES.length);
+  });
+
   it('updates automatically by default and saves a switch to manual', () => {
     const state = renderMenu();
     openMenu();

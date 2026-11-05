@@ -47,6 +47,19 @@ describe('createInstallPrompt', () => {
     await expect(prompt.install()).resolves.toBe(false);
   });
 
+  it('keeps the offer when the browser refuses to show it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const target = new EventTarget();
+    const prompt = createInstallPrompt(target, false);
+    const event = offerEvent('accepted');
+    event.prompt = vi.fn(() => Promise.reject(new Error('no user gesture')));
+    target.dispatchEvent(event);
+    await expect(prompt.install()).resolves.toBe(false);
+    expect(prompt.canInstall.value).toBe(true);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('reports a dismissed offer', async () => {
     const target = new EventTarget();
     const prompt = createInstallPrompt(target, false);
