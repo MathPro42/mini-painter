@@ -28,6 +28,10 @@
           {
             "type": "command",
             "command": "npm test --silent >&2 || exit 2"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/requireCodeReview.js\""
           }
         ]
       }
