@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { REVIEW_REQUEST, changesFingerprint, reviewRequest } from './reviewGate.js';
+import {
+  REVIEW_REQUEST,
+  changesFingerprint,
+  formatMarker,
+  parseMarker,
+  reviewDecision,
+} from './reviewGate.js';
 
 const DIFF = 'diff --git a/cube.ts b/cube.ts\n+export const side = 2;\n';
 
@@ -39,30 +45,74 @@ describe('changesFingerprint', () => {
   });
 });
 
-describe('reviewRequest', () => {
-  const base = { stopHookActive: false, fingerprint: 'abc', reviewedFingerprint: null };
+describe('reviewDecision', () => {
+  const FP = 'a'.repeat(64);
+  const OTHER = 'b'.repeat(64);
+  const base = { stopHookActive: false, fingerprint: FP, marker: null };
+  const STOP = { request: null, record: null };
 
-  it('asks for a review of changes nobody reviewed', () => {
-    expect(reviewRequest(base)).toBe(REVIEW_REQUEST);
-    expect(reviewRequest({ ...base, reviewedFingerprint: 'old' })).toBe(REVIEW_REQUEST);
+  it('asks for a review of changes nobody was asked about, and records that', () => {
+    expect(reviewDecision(base)).toEqual({
+      request: REVIEW_REQUEST,
+      record: { state: 'requested', fingerprint: FP },
+    });
+    expect(
+      reviewDecision({ ...base, marker: { state: 'reviewed', fingerprint: OTHER } }).request,
+    ).toBe(REVIEW_REQUEST);
   });
 
   it('lets Claude stop when there is nothing to review', () => {
-    expect(reviewRequest({ ...base, fingerprint: null })).toBeNull();
+    expect(reviewDecision({ ...base, fingerprint: null })).toEqual(STOP);
   });
 
-  it('asks once for the same changes', () => {
-    expect(reviewRequest({ ...base, reviewedFingerprint: 'abc' })).toBeNull();
+  it('asks once for the same changes, reviewed or skipped', () => {
+    expect(reviewDecision({ ...base, marker: { state: 'reviewed', fingerprint: FP } })).toEqual(
+      STOP,
+    );
+    expect(reviewDecision({ ...base, marker: { state: 'requested', fingerprint: FP } })).toEqual(
+      STOP,
+    );
   });
 
-  it('never sends Claude back twice in a row', () => {
-    expect(reviewRequest({ ...base, stopHookActive: true })).toBeNull();
+  it("counts a requested review's fixes as reviewed at the next stop", () => {
+    expect(
+      reviewDecision({
+        stopHookActive: true,
+        fingerprint: OTHER,
+        marker: { state: 'requested', fingerprint: FP },
+      }),
+    ).toEqual({ request: null, record: { state: 'reviewed', fingerprint: OTHER } });
+  });
+
+  it('records nothing on a retry another stop hook caused', () => {
+    expect(
+      reviewDecision({
+        stopHookActive: true,
+        fingerprint: OTHER,
+        marker: { state: 'reviewed', fingerprint: FP },
+      }),
+    ).toEqual(STOP);
+    expect(reviewDecision({ ...base, stopHookActive: true })).toEqual(STOP);
   });
 
   it('names the skill and the independent reviewer', () => {
     expect(REVIEW_REQUEST).toContain('/code-review');
     expect(REVIEW_REQUEST).toContain('subagent');
   });
+});
+
+describe('markers', () => {
+  it('read back what they store', () => {
+    const marker = { state: 'requested', fingerprint: 'c'.repeat(64) };
+    expect(parseMarker(formatMarker(marker))).toEqual(marker);
+  });
+
+  it.each([[null], [''], ['done abc'], [`reviewed ${'z'.repeat(64)}`], ['a'.repeat(64)]])(
+    'are null for %j',
+    (text) => {
+      expect(parseMarker(text)).toBeNull();
+    },
+  );
 });
 
 describe('requireCodeReview.js', () => {
@@ -115,6 +165,26 @@ describe('requireCodeReview.js', () => {
     git('commit', '-qam', 'Bigger cube');
     expect(stop(dir).status).toBe(0);
     writeFileSync(join(dir, 'sphere.ts'), 'export const radius = 1;\n');
+    expect(stop(dir).status).toBe(2);
+  });
+
+  it("does not start a new review over a review's fixes", () => {
+    const { dir } = repo();
+    writeFileSync(join(dir, 'cube.ts'), 'export const side = 2;\n');
+    expect(stop(dir).status).toBe(2);
+    writeFileSync(join(dir, 'cube.ts'), 'export const side = 3;\n');
+    expect(stop(dir, true).status).toBe(0);
+    expect(stop(dir).status).toBe(0);
+    writeFileSync(join(dir, 'sphere.ts'), 'export const radius = 1;\n');
+    expect(stop(dir).status).toBe(2);
+  });
+
+  it('sees a second edit of a binary file', () => {
+    const { dir, git } = repo();
+    writeFileSync(join(dir, 'swatch.bin'), Buffer.from([0, 1, 2]));
+    git('add', 'swatch.bin');
+    expect(stop(dir).status).toBe(2);
+    writeFileSync(join(dir, 'swatch.bin'), Buffer.from([0, 1, 3]));
     expect(stop(dir).status).toBe(2);
   });
 
