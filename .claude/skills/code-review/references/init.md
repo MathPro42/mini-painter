@@ -22,6 +22,7 @@ Drafted by the code-review skill from this repository's docs and configs. Edit f
 
 ## Check command
 <the command that runs the project's checks, as CI runs them, or "none found">
+Covers: <short list of the rules the tools enforce>
 
 ## Project rules
 - <rule, in one line> (source: <file>)
@@ -31,11 +32,15 @@ Drafted by the code-review skill from this repository's docs and configs. Edit f
 - <path to each decision record>
 ```
 
-- Write down a rule only when a doc or config states it. Leave out what the tools already enforce, except to note that the check command covers it.
+- Write down a rule only when a doc or config states it.
+- A rule a tool enforces is not a project rule. Name it once in the **Covers** list under the check command, and not under Project rules.
+- Keep a rule under Project rules only for the part no tool checks. For example, from "layer imports are lint-enforced; move the code, never disable the rule", keep only "never disable a lint rule to get past it".
 - Mark a rule as absolute when its source does ("never", "must", "non-negotiable").
 - If a section has nothing, write "none found" instead of guessing.
 
 ## 3. Ask before writing
+
+Before showing the draft, check each project rule against the tool configs you read, and move any rule they enforce to the Covers list.
 
 Show the draft to the user and ask them to approve or edit it.
 
