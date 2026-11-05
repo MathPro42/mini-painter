@@ -78,6 +78,18 @@ describe('createAppUpdater in auto mode', () => {
     expect(updater.status.value).toBe('applying');
   });
 
+  it('waits for the user when the drawing cannot be kept', async () => {
+    const source = fakeSource();
+    source.hasUpdate = true;
+    const { updater } = setup('auto', source, { canApplyNow: () => false });
+    await vi.waitFor(() => {
+      expect(updater.status.value).toBe('available');
+    });
+    expect(source.apply).not.toHaveBeenCalled();
+    await updater.apply();
+    expect(source.apply).toHaveBeenCalledOnce();
+  });
+
   it('applies an update the source announces', async () => {
     const { source } = setup('auto');
     await vi.advanceTimersByTimeAsync(0);
