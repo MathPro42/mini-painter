@@ -145,7 +145,8 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   `state/appUpdater.ts` finds updates: in auto mode (`state/settingsState.ts`, the default)
   on start and hourly, in manual mode on request. Its source is `serviceWorkerSource.ts` for
   the site (a waiting worker takes over on `SKIP_WAITING`, then every tab flushes autosave
-  and reloads) or `remoteVersionSource.ts` for the offline copy (compares the site's
+  and reloads, except one with a drawing open, which waits until the user applies the update
+  there) or `remoteVersionSource.ts` for the offline copy (compares the site's
   `version.json`, then downloads the new zip). In auto mode `state/updateNotice.ts` decides
   when to apply and `components/UpdateNoticeBar.tsx` shows it: with nothing open, a 5 s
   countdown on the empty page; with a drawing open, a bar until the drawing is closed. "Later"
@@ -227,6 +228,7 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-11-09 | A tab with a drawing open never reloads for another tab's update                 | An empty tab's countdown reloaded every open drawing. Nothing loads lazily, so an old page runs on.         |
 | 2026-11-05 | Offline use: the user picks an installed PWA or a zip; both are built and served | Owner's call. The PWA updates itself; the zip needs no install and runs from a folder.                      |
 | 2026-11-05 | Auto updates never reload under an open drawing: they wait for it to be closed   | Owner's call. A reload mid-work lost the selection, view and a color drag. Nothing open → 5 s countdown.    |
 | 2026-11-05 | Updates are automatic by default; an update reloads only after autosave flushes  | Owner's call. The flush keeps the last strokes. Manual shows a dot on the title and an "Update now" button. |

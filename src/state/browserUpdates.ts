@@ -1,6 +1,7 @@
 import { SITE_OFFLINE_ZIP_URL, SITE_VERSION_URL } from '../utils/app/distribution';
-import { createAppUpdater } from './appUpdater';
 import { computed } from '@preact/signals-core';
+import type { ReadonlySignal } from '@preact/signals-core';
+import { createAppUpdater } from './appUpdater';
 import type { AppState } from './appState';
 import type { AppUpdater, UpdateSource } from './appUpdater';
 import type { Autosave } from './autosave';
@@ -34,6 +35,8 @@ export interface BrowserUpdaterOptions {
   readonly updateMode: SettingsState['updateMode'];
   /** Saves pending work before any reload onto a new version. */
   readonly beforeApply: () => Promise<void>;
+  /** `true` while a drawing is open: another tab's update then waits for this tab. */
+  readonly drawingOpen: ReadonlySignal<boolean>;
 }
 
 /** The updater for the running build, or `null` where it can't update. */
@@ -72,15 +75,16 @@ function getUpdateSource(options: BrowserUpdaterOptions, env: BrowserEnv): Updat
         container,
         scriptUrl: `${options.baseUrl}sw.js`,
         scope: options.baseUrl,
-        // Every open tab reloads when a new version takes over, not just the one
-        // that applied it, so each saves its own pending work first. The reload
-        // happens either way: the old version's files may already be gone.
+        // A new version reloads every tab it takes over that has no drawing open,
+        // not just the one that applied it, so each saves its own pending work
+        // first. The reload happens either way: the old version's files may be gone.
         reload: () => {
           const reload = (): void => {
             env.location.reload();
           };
           void options.beforeApply().then(reload, reload);
         },
+        canReloadNow: () => !options.drawingOpen.peek(),
       });
 }
 
@@ -121,12 +125,14 @@ export function startBrowserUpdates(
   build: BuildInfo,
   env: BrowserEnv,
 ): BrowserUpdates {
+  const drawingOpen = computed(() => state.svg.value !== null);
   const options: BrowserUpdaterOptions = {
     distribution: build.distribution,
     baseUrl: build.baseUrl,
     currentVersion: build.version,
     updateMode: state.updateMode,
     beforeApply: () => autosave.flush(),
+    drawingOpen,
   };
   const updater = build.isProduction ? getBrowserUpdater(options, env) : null;
   const notice =
@@ -135,7 +141,7 @@ export function startBrowserUpdates(
       : createUpdateNotice({
           updater,
           updateMode: state.updateMode,
-          drawingOpen: computed(() => state.svg.value !== null),
+          drawingOpen,
           workSaved: autosave.workSaved,
         });
   return { updater, notice, install: getBrowserInstallPrompt(build.distribution, env) };

@@ -29,6 +29,11 @@ export interface ServiceWorkerSourceOptions {
   readonly scope: string;
   /** Reloads the page once the new version serves it. */
   readonly reload: () => void;
+  /**
+   * `false` while a reload would interrupt work. A version another tab
+   * switched to then waits until it is applied in this tab too.
+   */
+  readonly canReloadNow: () => boolean;
 }
 
 function warnRegisterFailed(error: unknown): void {
@@ -50,9 +55,12 @@ export function createServiceWorkerSource(options: ServiceWorkerSourceOptions): 
   const isUpdate = (worker: WorkerLike | null): worker is WorkerLike =>
     worker !== null && container.controller !== null;
 
+  let applied = false;
   let reloading = false;
+  // Fires in every tab, also when another tab applied the update. A busy tab
+  // runs on: nothing is loaded lazily, so the page needs no file from the old version.
   container.addEventListener('controllerchange', () => {
-    if (!reloading) {
+    if (!reloading && (applied || options.canReloadNow())) {
       reloading = true;
       options.reload();
     }
@@ -85,6 +93,7 @@ export function createServiceWorkerSource(options: ServiceWorkerSourceOptions): 
       };
     },
     apply: async () => {
+      applied = true;
       const waiting = (await registration).waiting;
       if (waiting === null) {
         options.reload();
