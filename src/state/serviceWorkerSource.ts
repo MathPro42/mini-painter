@@ -19,7 +19,7 @@ export interface RegistrationLike {
 export interface ContainerLike {
   /** The worker serving this page; `null` on the very first visit. */
   readonly controller: unknown;
-  register: (url: string, options: { scope: string }) => Promise<RegistrationLike>;
+  register: (url: string, options: RegistrationOptions) => Promise<RegistrationLike>;
   addEventListener: (type: 'controllerchange', listener: () => void) => void;
 }
 
@@ -50,7 +50,12 @@ export const SKIP_WAITING = { type: 'SKIP_WAITING' };
  */
 export function createServiceWorkerSource(options: ServiceWorkerSourceOptions): UpdateSource {
   const { container } = options;
-  const registration = container.register(options.scriptUrl, { scope: options.scope });
+  // The browser fetches imported scripts through the HTTP cache by default, and
+  // Pages caches `sw-manifest.js` for minutes, so a check right after a deploy missed it.
+  const registration = container.register(options.scriptUrl, {
+    scope: options.scope,
+    updateViaCache: 'none',
+  });
   // On a first visit there is nothing to update: the new worker just installs.
   const isUpdate = (worker: WorkerLike | null): worker is WorkerLike =>
     worker !== null && container.controller !== null;
