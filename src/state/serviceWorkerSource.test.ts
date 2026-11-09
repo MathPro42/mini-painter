@@ -48,9 +48,12 @@ function setup({ controlled = true, busy = false } = {}) {
 }
 
 describe('createServiceWorkerSource', () => {
-  it('registers the worker for the app scope', () => {
+  it('registers the worker for the app scope, checked past the HTTP cache', () => {
     const { container, source } = setup();
-    expect(container.register).toHaveBeenCalledWith('/app/sw.js', { scope: '/app/' });
+    expect(container.register).toHaveBeenCalledWith('/app/sw.js', {
+      scope: '/app/',
+      updateViaCache: 'none',
+    });
     expect(source.applies).toBe('reload');
   });
 

@@ -64,7 +64,10 @@ describe('getBrowserUpdater', () => {
     const container = fakeContainer();
     const updater = getBrowserUpdater(options('site'), fakeEnv(container));
     expect(updater?.applies).toBe('reload');
-    expect(container.register).toHaveBeenCalledWith('/app/sw.js', { scope: '/app/' });
+    expect(container.register).toHaveBeenCalledWith(
+      '/app/sw.js',
+      expect.objectContaining({ scope: '/app/' }),
+    );
   });
 
   it('saves pending work before a new version reloads the tab', async () => {
