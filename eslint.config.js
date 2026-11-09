@@ -33,7 +33,7 @@ const restrictImports = (...keys) => ({
 });
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', 'node_modules']),
+  globalIgnores(['dist', 'dist-offline', 'coverage', 'node_modules']),
 
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
@@ -87,11 +87,16 @@ export default defineConfig([
   { files: ['src/components/**'], rules: restrictImports('three') },
 
   {
-    files: ['src/**/*.test.{ts,tsx}', 'src/test/**', '.claude/**/*.test.js'],
+    files: [
+      'src/**/*.test.{ts,tsx}',
+      'src/test/**',
+      '.claude/**/*.test.js',
+      'scripts/**/*.test.{js,ts}',
+    ],
     rules: { 'max-lines-per-function': 'off' },
   },
   {
-    files: ['*.config.{js,ts}'],
+    files: ['*.config.{js,ts}', 'scripts/**'],
     languageOptions: { globals: globals.node },
   },
   {
@@ -100,9 +105,13 @@ export default defineConfig([
   },
   {
     // Claude Code hooks: plain JavaScript that Node runs, so no type annotations.
-    files: ['.claude/**/*.js'],
+    files: ['.claude/**/*.js', 'scripts/**/*.js'],
     languageOptions: { globals: globals.node },
     rules: { '@typescript-eslint/explicit-module-boundary-types': 'off' },
+  },
+  {
+    files: ['public/sw.js'],
+    languageOptions: { globals: globals.serviceworker },
   },
 
   prettier,

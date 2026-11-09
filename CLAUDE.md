@@ -32,6 +32,7 @@ npm run test:watch     # Vitest in watch mode
 npm run lint:fix       # ESLint autofix
 npm run format         # Prettier write
 npm run build && npm run preview   # production build → http://localhost:4173/mini-painter/
+npm run build:offline  # only the offline copy: dist-offline/ and dist/mini-painter-offline.zip
 
 npx vitest run src/utils/color.test.ts   # one test file
 npx vitest run -t "hexColorToInt"        # tests whose full name matches a regex
@@ -48,13 +49,15 @@ Jekyll deploy on every push, and if it finishes last it publishes the raw repo (
 
 ```
 src/
-  main.tsx        entry point: creates state, starts autosave, mounts <App/>. Nothing else.
+  main.tsx        entry point: creates state, starts autosave and updates, mounts <App/>.
   components/     Preact UI (DOM, events, layout)
   rendering/      Three.js (scene, camera, renderer, model loading)
   state/          reactive app state (@preact/signals-core stores)
   utils/          pure shared logic (color math, file parsing, geometry helpers)
   styles/         global CSS
   test/           test setup only
+public/sw.js      service worker of the installable app (plain JS)
+scripts/          build helpers: Vite plugins, zip writer, app version
 ```
 
 ### Dependency rules
@@ -131,6 +134,24 @@ here means the code is in the wrong layer. Move it; don't disable the rule.
   The history is stored with the id of its drawing. A save writes the drawing again when
   storage holds another id, because tabs share the database.
   **New** (`state.closeDrawing()`) empties the view and the autosave.
+- Offline use and updates: clicking the title opens `components/SettingsMenu.tsx`. It offers
+  two ways to run without the site, picked by the user: install the app (a PWA:
+  `state/installPrompt.ts` keeps the browser's `beforeinstallprompt`) or download
+  `mini-painter-offline.zip`. `npm run build` makes both. `scripts/pwaPlugin.ts` writes
+  `sw-manifest.js` (precached files and a version, imported by `public/sw.js`) and
+  `version.json`. `vite build --mode offline` (`scripts/offlinePlugin.ts`) makes a copy with
+  relative paths and one classic script, so it opens from `file://`, and
+  `scripts/zipDirectory.js` zips it. `__APP_VERSION__` is the commit.
+  `state/appUpdater.ts` finds updates: in auto mode (`state/settingsState.ts`, the default)
+  on start and hourly, in manual mode on request. Its source is `serviceWorkerSource.ts` for
+  the site (a waiting worker takes over on `SKIP_WAITING`, then every tab flushes autosave
+  and reloads, except one with a drawing open, which waits until the user applies the update
+  there) or `remoteVersionSource.ts` for the offline copy (compares the site's
+  `version.json`, then downloads the new zip). In auto mode `state/updateNotice.ts` decides
+  when to apply and `components/UpdateNoticeBar.tsx` shows it: with nothing open, a 5 s
+  countdown on the empty page; with a drawing open, a bar until the drawing is closed. "Later"
+  or a switch to manual cancels it. `state/browserUpdates.ts` (`startBrowserUpdates`, builds
+  only) wires it all to `window`.
 - Palettes persist through a `KeyValueStorage` passed to `createAppState({ storage })`.
   `main.tsx` passes `localStorage` (via `state/browserStorage.ts`); tests pass a fake or
   nothing. Every palette change saves; `utils/palette/savedPalettes.ts` owns the JSON format.
@@ -207,6 +228,14 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 
 | Date       | Decision                                                                         | Why                                                                                                         |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2026-11-09 | A tab with a drawing open never reloads for another tab's update                 | An empty tab's countdown reloaded every open drawing. Nothing loads lazily, so an old page runs on.         |
+| 2026-11-05 | Offline use: the user picks an installed PWA or a zip; both are built and served | Owner's call. The PWA updates itself; the zip needs no install and runs from a folder.                      |
+| 2026-11-05 | Auto updates never reload under an open drawing: they wait for it to be closed   | Owner's call. A reload mid-work lost the selection, view and a color drag. Nothing open → 5 s countdown.    |
+| 2026-11-05 | Updates are automatic by default; an update reloads only after autosave flushes  | Owner's call. The flush keeps the last strokes. Manual shows a dot on the title and an "Update now" button. |
+| 2026-11-05 | Own service worker; its file list is an imported, generated `sw-manifest.js`     | No Workbox. Browsers byte-compare imported scripts, so each deploy is seen as an update.                    |
+| 2026-11-05 | The offline copy is one classic script with relative paths                       | Browsers block module scripts and `crossorigin` loads on `file://`. It opens with a double-click.           |
+| 2026-11-05 | The offline copy can only download its update; the user unzips it over itself    | A page can't write its own files. It compares its commit with the site's `version.json` (CORS allowed).     |
+| 2026-11-05 | Own zip writer on `node:zlib` for the build                                      | No dependency and no `zip` tool needed on contributors' machines. Fixed dates keep the zip reproducible.    |
 | 2026-11-05 | `/code-review` runs in a forked `code-reviewer` subagent, told not to edit       | Owner's call. Reviewing in the author's own context is anchored to its own explanations. A fresh one isn't. |
 | 2026-11-05 | A Stop hook sends Claude to `/code-review` once per new state of a branch's diff | Rules get forgotten; hooks run. A review's fixes count as reviewed, so turns don't chain reviews.           |
 | 2026-11-04 | A PreToolUse hook blocks commits and pushes on branches not named like features  | Rules people (and Claude) must remember get broken. Hooks run in Claude Code, so they can't be skipped.     |

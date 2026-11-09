@@ -2,7 +2,7 @@ import { defineConfig, mergeConfig } from 'vitest/config';
 import viteConfig from './vite.config.ts';
 
 export default mergeConfig(
-  viteConfig,
+  viteConfig({ command: 'serve', mode: 'test' }),
   defineConfig({
     // Binary spreadsheet fixtures load in tests as data URLs (`import x from './a.xls?inline'`).
     assetsInclude: ['**/*.xls', '**/*.xlsx'],
@@ -27,6 +27,11 @@ export default mergeConfig(
           // Claude Code hooks: Node scripts outside the app.
           extends: true,
           test: { name: 'hooks', environment: 'node', include: ['.claude/hooks/**/*.test.js'] },
+        },
+        {
+          // Build scripts: Node, outside the app.
+          extends: true,
+          test: { name: 'scripts', environment: 'node', include: ['scripts/**/*.test.{js,ts}'] },
         },
       ],
       coverage: {

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:offline",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint . --max-warnings 0",
@@ -20,7 +20,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test:coverage && npm run build"
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test:coverage && npm run build",
+    "build:offline": "vite build --mode offline --outDir dist-offline && node scripts/zipDirectory.js dist-offline dist/mini-painter-offline.zip mini-painter"
   },
   "dependencies": {
     "@preact/signals-core": "^1.14.5",
