@@ -39,7 +39,11 @@ export function InstallOptions({ distribution, install }: InstallOptionsProps): 
         <p class="settings__hint">An app on this device. Updates itself.</p>
       </div>
       <div class="settings__option">
-        <a class="button" href={`${import.meta.env.BASE_URL}${OFFLINE_ZIP_NAME}`} download>
+        <a
+          class="button"
+          href={`${import.meta.env.BASE_URL}${OFFLINE_ZIP_NAME}`}
+          download={OFFLINE_ZIP_NAME}
+        >
           Download zip
         </a>
         <p class="settings__hint">
