@@ -1,5 +1,5 @@
 import { readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Plugin } from 'vite';
 
 /** The installable app's links, which mean nothing in a copy opened from disk. */
@@ -42,7 +42,7 @@ export function offlinePlugin(): Plugin {
     name: 'mini-painter:offline',
     apply: 'build',
     configResolved(config) {
-      outDir = join(config.root, config.build.outDir);
+      outDir = resolve(config.root, config.build.outDir);
     },
     transformIndexHtml: { order: 'post', handler: toOfflineHtml },
     generateBundle() {
