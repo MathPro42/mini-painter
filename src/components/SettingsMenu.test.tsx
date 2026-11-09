@@ -96,10 +96,10 @@ describe('SettingsMenu offline options', () => {
     openMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Install app' }));
     expect(install.install).toHaveBeenCalledOnce();
-    expect(screen.getByRole('link', { name: 'Download zip' })).toHaveAttribute(
-      'href',
-      expect.stringMatching(/mini-painter-offline\.zip$/),
-    );
+    const link = screen.getByRole('link', { name: 'Download zip' });
+    expect(link).toHaveAttribute('href', expect.stringMatching(/mini-painter-offline\.zip$/));
+    // A bare `download` renders as download="true", which browsers save as true.zip.
+    expect(link).toHaveAttribute('download', 'mini-painter-offline.zip');
   });
 
   it("points at the browser's menu when it makes no install offer", () => {
