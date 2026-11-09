@@ -1,6 +1,8 @@
 ---
 name: code-review
 description: Review generated or hand-written code against software design principles (DRY, KISS, YAGNI, SOLID, self-documenting code) plus correctness, security, error handling, testability and consistency, and against the repository's own rules, which it drafts on the first run in a repo. Works in any language. Use this skill whenever the user asks to review, audit, critique, check, or "look over" code, a diff, a pull request, or code that Claude or another AI just generated, even if they don't say "code review". Also use it proactively before delivering a large piece of generated code to self-check it.
+context: fork
+agent: code-reviewer
 ---
 
 # Code Review
@@ -193,14 +195,18 @@ Guidelines for the report:
 - If the code is good, say so plainly and keep the report short. Do not invent problems to look thorough.
 - The scorecard is optional. If the user only wants a quick look, give the Summary and the top findings and skip it.
 
+## Where the review runs
+
+This skill runs in a separate `code-reviewer` subagent (`context: fork` above): a fresh context that has not seen the conversation that produced the code, so the review is not anchored to the author's explanations. The reviewer reads and reports; it never edits. Its report returns to the main session, which relays it to the user and applies the fixes. A Stop hook (`.claude/hooks/requireCodeReview.js`) sends the main session here before it finishes work that changed the branch.
+
 ## After the review
 
-Deliver the report in the conversation and stop there. Do not modify the code unless the user asks, because a review is a decision point: the author may disagree with a finding or want to fix only some of them. End by offering to apply the fixes.
+End with the report. The reviewer never modifies the code, because a review is a decision point: the author may disagree with a finding or want to fix only some of them.
 
 ## Self-check mode
 
-When you use this skill on your own generated code before delivering it, skip the report: fix what you find, then add one line to your reply saying what the self-check changed.
+When the main session runs this review on its own generated code before delivering it, the report stays the same. The main session then fixes what was found and adds one line to its reply saying what the self-check changed.
 
-## When asked to fix the issues
+## Applying the fixes (main session)
 
-Apply the fixes in order of severity, keep each change minimal, and re-check the result against the same principles so the fixes do not introduce new duplication or speculative abstractions. Finish with what changed.
+When the user, or the Stop hook, asks for fixes: apply them in order of severity, keep each change minimal, and re-check the result against the same principles so the fixes do not introduce new duplication or speculative abstractions. Finish with what changed.

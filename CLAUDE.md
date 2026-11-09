@@ -236,6 +236,8 @@ Newest first. Add an entry whenever you make a decision a future contributor wou
 | 2026-11-05 | The offline copy is one classic script with relative paths                       | Browsers block module scripts and `crossorigin` loads on `file://`. It opens with a double-click.           |
 | 2026-11-05 | The offline copy can only download its update; the user unzips it over itself    | A page can't write its own files. It compares its commit with the site's `version.json` (CORS allowed).     |
 | 2026-11-05 | Own zip writer on `node:zlib` for the build                                      | No dependency and no `zip` tool needed on contributors' machines. Fixed dates keep the zip reproducible.    |
+| 2026-11-05 | `/code-review` runs in a forked `code-reviewer` subagent, told not to edit       | Owner's call. Reviewing in the author's own context is anchored to its own explanations. A fresh one isn't. |
+| 2026-11-05 | A Stop hook sends Claude to `/code-review` once per new state of a branch's diff | Rules get forgotten; hooks run. A review's fixes count as reviewed, so turns don't chain reviews.           |
 | 2026-11-04 | A PreToolUse hook blocks commits and pushes on branches not named like features  | Rules people (and Claude) must remember get broken. Hooks run in Claude Code, so they can't be skipped.     |
 | 2026-11-04 | Claude names each feature branch itself; a session's `claude/…` branch is unused | Owner's call. Sessions assign a random `claude/…` branch and push nowhere else without permission.          |
 | 2026-11-04 | Autosave keeps a drawing id; the drawing is rewritten when storage has another   | Two tabs saved one drawing with the other's history, and the next restore deleted both. Last save wins.     |
