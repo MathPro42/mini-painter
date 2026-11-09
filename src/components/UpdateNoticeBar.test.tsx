@@ -26,21 +26,28 @@ describe('UpdateNoticeBar', () => {
 
   it('counts down on the empty page', async () => {
     const notice = fakeNotice({ kind: 'countdown', secondsLeft: 5 });
-    render(<UpdateNoticeBar notice={notice} />);
-    const status = screen.getByRole('status');
-    expect(status).toHaveTextContent('Updating in 5 s');
-    expect(status).toHaveClass('update-notice--center');
+    const { container } = render(<UpdateNoticeBar notice={notice} />);
+    expect(container.firstChild).toHaveClass('update-notice--center');
+    expect(screen.getByText('Updating in 5 s…')).toBeInTheDocument();
     await act(() => {
       notice.notice.value = { kind: 'countdown', secondsLeft: 4 };
     });
-    expect(status).toHaveTextContent('Updating in 4 s');
+    expect(screen.getByText('Updating in 4 s…')).toBeInTheDocument();
+  });
+
+  it('announces the update once, not every second of the countdown', () => {
+    render(<UpdateNoticeBar notice={fakeNotice({ kind: 'countdown', secondsLeft: 5 })} />);
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('A new version of Mini Painter is ready.');
+    expect(status).not.toContainElement(screen.getByText('Updating in 5 s…'));
   });
 
   it('says the update waits for the drawing to close, in a bar on top', () => {
-    render(<UpdateNoticeBar notice={fakeNotice({ kind: 'on-close', workAtRisk: false })} />);
-    const status = screen.getByRole('status');
-    expect(status).toHaveTextContent('installs when you close this drawing');
-    expect(status).not.toHaveClass('update-notice--center');
+    const { container } = render(
+      <UpdateNoticeBar notice={fakeNotice({ kind: 'on-close', workAtRisk: false })} />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('installs when you close this drawing');
+    expect(container.firstChild).not.toHaveClass('update-notice--center');
   });
 
   it('updates now or later', () => {
