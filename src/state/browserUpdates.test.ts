@@ -27,6 +27,7 @@ function options(distribution: BrowserUpdaterOptions['distribution']): BrowserUp
     currentVersion: 'abc',
     updateMode: signal<UpdateMode>('manual'),
     beforeApply: () => Promise.resolve(),
+    drawingOpen: signal(false),
   };
 }
 
@@ -44,6 +45,13 @@ function fakeContainer(): FakeContainer {
     addEventListener: target.addEventListener.bind(target),
     changeController: () => target.dispatchEvent(new Event('controllerchange')),
   };
+}
+
+/** Lets every pending promise callback run. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }
 
 type FakeContainer = ContainerLike & {
@@ -88,6 +96,19 @@ describe('getBrowserUpdater', () => {
       env,
     );
     container.changeController();
+    await vi.waitFor(() => {
+      expect(env.location.reload).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("keeps an open drawing on another tab's update until it is applied here", async () => {
+    const container = fakeContainer();
+    const env = fakeEnv(container);
+    const updater = getBrowserUpdater({ ...options('site'), drawingOpen: signal(true) }, env);
+    container.changeController();
+    await settle();
+    expect(env.location.reload).not.toHaveBeenCalled();
+    await updater?.apply();
     await vi.waitFor(() => {
       expect(env.location.reload).toHaveBeenCalledOnce();
     });
@@ -185,6 +206,17 @@ describe('startBrowserUpdates', () => {
     state.closeDrawing();
     expect(notice?.notice.value.kind).toBe('countdown');
     notice?.dispose();
+  });
+
+  it("does not reload the open drawing for another tab's update", async () => {
+    const container = fakeContainer();
+    const env = fakeEnv(container);
+    const state = appState();
+    state.loadSvg('<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>');
+    startBrowserUpdates(state, fakeAutosave(true), build(true, 'site'), env);
+    container.changeController();
+    await settle();
+    expect(env.location.reload).not.toHaveBeenCalled();
   });
 
   it('has no notice where nothing updates', () => {

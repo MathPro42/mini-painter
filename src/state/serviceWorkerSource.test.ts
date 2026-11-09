@@ -34,7 +34,7 @@ class FakeContainer extends EventTarget implements ContainerLike {
   }
 }
 
-function setup(controlled = true) {
+function setup({ controlled = true, busy = false } = {}) {
   const container = new FakeContainer(controlled ? {} : null);
   const reload = vi.fn();
   const source = createServiceWorkerSource({
@@ -42,6 +42,7 @@ function setup(controlled = true) {
     scriptUrl: '/app/sw.js',
     scope: '/app/',
     reload,
+    canReloadNow: () => !busy,
   });
   return { container, registration: container.registration, reload, source };
 }
@@ -62,7 +63,7 @@ describe('createServiceWorkerSource', () => {
   });
 
   it('reports no update on a first visit, when no worker serves the page yet', async () => {
-    const { registration, source } = setup(false);
+    const { registration, source } = setup({ controlled: false });
     registration.waiting = new FakeWorker();
     await expect(source.check()).resolves.toBe(false);
   });
@@ -108,6 +109,7 @@ describe('createServiceWorkerSource', () => {
       scriptUrl: 'sw.js',
       scope: './',
       reload: vi.fn(),
+      canReloadNow: () => true,
     });
     source.subscribe(vi.fn());
     await vi.waitFor(() => {
@@ -131,6 +133,29 @@ describe('createServiceWorkerSource', () => {
   it('just reloads when no worker is waiting', async () => {
     const { reload, source } = setup();
     await source.apply();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('reloads for an update another tab applied', () => {
+    const { container, reload } = setup();
+    container.dispatchEvent(new Event('controllerchange'));
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a busy tab on another tab's update until it is applied here", async () => {
+    const { container, reload, source } = setup({ busy: true });
+    container.dispatchEvent(new Event('controllerchange'));
+    expect(reload).not.toHaveBeenCalled();
+    // The new version already serves the page, so no worker waits any more.
+    await source.apply();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('reloads a busy tab for the update it applied itself', async () => {
+    const { container, registration, reload, source } = setup({ busy: true });
+    registration.waiting = new FakeWorker();
+    await source.apply();
+    container.dispatchEvent(new Event('controllerchange'));
     expect(reload).toHaveBeenCalledOnce();
   });
 });
