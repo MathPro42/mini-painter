@@ -34,7 +34,7 @@ export interface BrowserUpdaterOptions {
   readonly currentVersion: string;
   readonly updateMode: SettingsState['updateMode'];
   /** Saves pending work before any reload onto a new version. */
-  readonly beforeApply: () => Promise<void>;
+  readonly beforeReload: () => Promise<void>;
   /** `true` while a drawing is open: another tab's update then waits for this tab. */
   readonly drawingOpen: ReadonlySignal<boolean>;
 }
@@ -45,13 +45,7 @@ export function getBrowserUpdater(
   env: BrowserEnv,
 ): AppUpdater | null {
   const source = getUpdateSource(options, env);
-  return source === null
-    ? null
-    : createAppUpdater({
-        source,
-        updateMode: options.updateMode,
-        beforeApply: options.beforeApply,
-      });
+  return source === null ? null : createAppUpdater({ source, updateMode: options.updateMode });
 }
 
 function getUpdateSource(options: BrowserUpdaterOptions, env: BrowserEnv): UpdateSource | null {
@@ -82,7 +76,7 @@ function getUpdateSource(options: BrowserUpdaterOptions, env: BrowserEnv): Updat
           const reload = (): void => {
             env.location.reload();
           };
-          void options.beforeApply().then(reload, reload);
+          void options.beforeReload().then(reload, reload);
         },
         canReloadNow: () => !options.drawingOpen.peek(),
       });
@@ -131,7 +125,7 @@ export function startBrowserUpdates(
     baseUrl: build.baseUrl,
     currentVersion: build.version,
     updateMode: state.updateMode,
-    beforeApply: () => autosave.flush(),
+    beforeReload: () => autosave.flush(),
     drawingOpen,
   };
   const updater = build.isProduction ? getBrowserUpdater(options, env) : null;

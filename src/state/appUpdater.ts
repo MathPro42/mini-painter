@@ -25,7 +25,7 @@ export interface AppUpdater {
   readonly applies: UpdateSource['applies'];
   /** Looks for an update now. Never throws: failures show as the `'error'` status. */
   check: () => Promise<void>;
-  /** Applies the update found, after `beforeApply`. Never throws. */
+  /** Applies the update found. Never throws. */
   apply: () => Promise<void>;
   dispose: () => void;
 }
@@ -33,8 +33,6 @@ export interface AppUpdater {
 export interface AppUpdaterOptions {
   readonly source: UpdateSource;
   readonly updateMode: ReadonlySignal<UpdateMode>;
-  /** Runs before a reload, so unsaved work is written first (the autosave flush). */
-  readonly beforeApply?: () => Promise<void>;
   /** How often to look for updates while the mode is `'auto'`. */
   readonly checkEveryMs?: number;
 }
@@ -47,10 +45,10 @@ export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
  * auto mode goes through `createUpdateNotice`, which warns the user first.
  */
 export function createAppUpdater(options: AppUpdaterOptions): AppUpdater {
-  const { source, updateMode, beforeApply } = options;
+  const { source, updateMode } = options;
   const status = signal<UpdateStatus>('idle');
 
-  const apply = (): Promise<void> => applyUpdate(status, source, beforeApply);
+  const apply = (): Promise<void> => applyUpdate(status, source);
 
   const onAvailable = (): void => {
     if (status.peek() === 'applying') {
@@ -113,17 +111,12 @@ function runAutoChecks(
 }
 
 /** Applies an update and tracks it in `status`. Never throws. */
-async function applyUpdate(
-  status: Signal<UpdateStatus>,
-  source: UpdateSource,
-  beforeApply: (() => Promise<void>) | undefined,
-): Promise<void> {
+async function applyUpdate(status: Signal<UpdateStatus>, source: UpdateSource): Promise<void> {
   if (status.peek() === 'applying') {
     return;
   }
   status.value = 'applying';
   try {
-    await beforeApply?.();
     await source.apply();
     // A download leaves this version running, still out of date.
     if (source.applies === 'download') {
