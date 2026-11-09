@@ -26,7 +26,7 @@ function options(distribution: BrowserUpdaterOptions['distribution']): BrowserUp
     baseUrl: '/app/',
     currentVersion: 'abc',
     updateMode: signal<UpdateMode>('manual'),
-    beforeApply: () => Promise.resolve(),
+    beforeReload: () => Promise.resolve(),
     drawingOpen: signal(false),
   };
 }
@@ -75,7 +75,7 @@ describe('getBrowserUpdater', () => {
     getBrowserUpdater(
       {
         ...options('site'),
-        beforeApply: () => {
+        beforeReload: () => {
           order.push('flush');
           return Promise.resolve();
         },
@@ -92,7 +92,7 @@ describe('getBrowserUpdater', () => {
     const container = fakeContainer();
     const env = fakeEnv(container);
     getBrowserUpdater(
-      { ...options('site'), beforeApply: () => Promise.reject(new Error('x')) },
+      { ...options('site'), beforeReload: () => Promise.reject(new Error('x')) },
       env,
     );
     container.changeController();
@@ -172,14 +172,16 @@ describe('startBrowserUpdates', () => {
     expect(started.install).not.toBeNull();
   });
 
-  it('flushes autosave before applying an update', async () => {
+  it('flushes autosave before an update reloads the tab', async () => {
     const autosave = fakeAutosave(true);
-    const { updater } = startBrowserUpdates(appState(), autosave, build(true), fakeEnv());
+    const container = fakeContainer();
+    const env = fakeEnv(container);
+    startBrowserUpdates(appState(), autosave, build(true, 'site'), env);
+    container.changeController();
     await vi.waitFor(() => {
-      expect(updater?.status.value).toBe('available');
+      expect(env.location.reload).toHaveBeenCalledOnce();
     });
-    await updater?.apply();
-    expect(autosave.flush).toHaveBeenCalled();
+    expect(autosave.flush).toHaveBeenCalledOnce();
   });
 
   it('warns before an automatic update, and waits while a drawing is open', async () => {

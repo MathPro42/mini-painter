@@ -2,7 +2,7 @@ import { signal } from '@preact/signals-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpdateMode } from '../utils/app/updateMode';
 import { createAppUpdater } from './appUpdater';
-import type { AppUpdaterOptions, UpdateSource } from './appUpdater';
+import type { UpdateSource } from './appUpdater';
 
 interface FakeSource extends UpdateSource {
   hasUpdate: boolean;
@@ -29,9 +29,9 @@ function fakeSource(applies: UpdateSource['applies'] = 'reload'): FakeSource {
   return fake;
 }
 
-function setup(mode: UpdateMode, source = fakeSource(), extra: Partial<AppUpdaterOptions> = {}) {
+function setup(mode: UpdateMode, source = fakeSource()) {
   const updateMode = signal<UpdateMode>(mode);
-  const updater = createAppUpdater({ source, updateMode, checkEveryMs: 1000, ...extra });
+  const updater = createAppUpdater({ source, updateMode, checkEveryMs: 1000 });
   return { updateMode, updater, source };
 }
 
@@ -77,22 +77,6 @@ describe('createAppUpdater in auto mode', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(source.check).toHaveBeenCalledOnce();
     expect(updater.status.value).toBe('available');
-  });
-
-  it('flushes work before applying', async () => {
-    const order: string[] = [];
-    const source = fakeSource();
-    source.apply.mockImplementation(() => {
-      order.push('apply');
-      return Promise.resolve();
-    });
-    const beforeApply = () => {
-      order.push('flush');
-      return Promise.resolve();
-    };
-    const { updater } = setup('manual', source, { beforeApply });
-    await updater.apply();
-    expect(order).toEqual(['flush', 'apply']);
   });
 
   it('shows a failed check as an error', async () => {
